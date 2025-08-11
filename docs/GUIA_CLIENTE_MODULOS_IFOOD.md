@@ -150,32 +150,6 @@ Você abre o **Plano Certo Hub Insights** e vê:
 
 ---
 
-## 💡 Benefícios para o seu dia a dia
-
-### ⏱️ **Economia de Tempo**
-- Não precisa mais ficar entrando no iFood para ver relatórios
-- Não precisa calcular margem de lucro na calculadora
-- Não precisa planilha para controlar estoque
-
-### 💰 **Mais Lucro**
-- Identifica produtos que dão mais lucro
-- Otimiza preços baseado na demanda
-- Evita promoções que causam prejuízo
-- Reduz desperdício de estoque
-
-### 📊 **Decisões Inteligentes**
-- Relatórios fáceis de entender
-- Sugestões baseadas em dados reais
-- Comparações automáticas entre períodos
-- Alertas para não perder oportunidades
-
-### 🎯 **Controle Total**
-- Veja tudo de todas as lojas em um só lugar
-- Histórico completo de tudo que aconteceu
-- Previsões de faturamento e recebimento
-- Dados organizados para seu contador
-
----
 
 ## 🔄 Atualizações Automáticas
 
@@ -184,9 +158,6 @@ Você abre o **Plano Certo Hub Insights** e vê:
 - **Status das lojas**: Em tempo real
 - **Dados financeiros**: Todo dia às 18h
 - **Informações de produtos**: Imediatamente após mudanças no iFood
-
-### O que você precisa fazer?
-**NADA!** Tudo é automático. Você só precisa abrir o sistema e ver os relatórios prontos.
 
 ---
 
@@ -197,5 +168,3 @@ Se tiver qualquer dúvida ou problema:
 - 💬 **Chat no sistema**: Resposta em até 2 horas
 - 📧 **E-mail**: Para dúvidas detalhadas
 - 🎓 **Treinamento**: Vídeos explicativos passo a passo
-
-**Lembre-se**: Este sistema foi feito para facilitar sua vida e aumentar seus lucros. Não tenha medo de explorar todas as funcionalidades!
