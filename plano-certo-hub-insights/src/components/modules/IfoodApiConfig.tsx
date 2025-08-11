@@ -139,10 +139,10 @@ export const IfoodApiConfig = () => {
       const payload = {
         clientId: String(data.clientId),
         clientSecret: String(data.clientSecret),
-        user_id: user?.id // Envia o id do usuário logado para o N8N
+        user_id: user?.id // Envia o id do usuário logado
       };
       
-      console.log('🚀 [DEBUG] Enviando dados para N8N:');
+      console.log('🚀 [DEBUG] Enviando dados para serviço Node.js local:');
       console.log('  - user_id sendo enviado:', user?.id);
       console.log('  - payload completo:', payload);
       console.log('  - dados do usuário atual:', {
@@ -151,38 +151,90 @@ export const IfoodApiConfig = () => {
         aud: user?.aud
       });
       
-      const response = await fetch('https://webhook.n8n.hml.planocertodelivery.com/webhook/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const result = await response.json();
-      const dataResult = Array.isArray(result) ? result[0] : result;
-      if (response.ok && dataResult.clientId && dataResult.clientSecret) {
+      // Try local Python service first, fallback to N8N webhook
+      let response;
+      let result;
+      
+      try {
+        // Attempt local Node.js service
+        response = await fetch('http://localhost:9000/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        result = await response.json();
+        console.log('✅ [DEBUG] Resposta do serviço Node.js local:', result);
+      } catch (localError) {
+        console.log('⚠️ [DEBUG] Serviço Node.js local indisponível, tentando N8N...');
+        // Fallback to N8N webhook
+        response = await fetch('https://webhook.n8n.hml.planocertodelivery.com/webhook/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        result = await response.json();
+        console.log('✅ [DEBUG] Resposta do webhook N8N:', result);
+      }
+
+      // Handle successful response
+      if (response.ok && result.success) {
+        const tokenData = result.data;
         setConfig({
-          clientId: dataResult.clientId,
-          clientSecret: dataResult.clientSecret,
+          clientId: tokenData.client_id || payload.clientId,
+          clientSecret: tokenData.client_secret || payload.clientSecret,
           environment: 'sandbox',
           webhookUrl: ''
         });
         setIsConnected(true);
         toast({
-          title: 'Conexão realizada',
-          description: 'Conexão realizada com sucesso!'
+          title: '✅ Token gerado com sucesso!',
+          description: `Token de acesso iFood criado e armazenado. Expira em ${Math.floor(tokenData.expires_in / 3600)} horas.`
+        });
+      } else if (response.ok && result.message && result.message.includes('Valid token already exists')) {
+        // Token já existe e é válido
+        const tokenData = result.data;
+        setConfig({
+          clientId: tokenData.client_id || payload.clientId,
+          clientSecret: tokenData.client_secret || payload.clientSecret,
+          environment: 'sandbox',
+          webhookUrl: ''
+        });
+        setIsConnected(true);
+        toast({
+          title: '✅ Token válido encontrado!',
+          description: 'Token de acesso já existe e ainda é válido.'
         });
       } else {
-        setIsConnected(false);
-        toast({
-          title: 'Erro ao conectar',
-          description: (dataResult && typeof dataResult.error === 'string' && dataResult.error) || 'Erro ao conectar ao iFood.',
-          variant: 'destructive',
-        });
+        // Handle N8N legacy response format
+        const dataResult = Array.isArray(result) ? result[0] : result;
+        if (response.ok && dataResult.clientId && dataResult.clientSecret) {
+          setConfig({
+            clientId: dataResult.clientId,
+            clientSecret: dataResult.clientSecret,
+            environment: 'sandbox',
+            webhookUrl: ''
+          });
+          setIsConnected(true);
+          toast({
+            title: 'Conexão realizada',
+            description: 'Conexão realizada com sucesso!'
+          });
+        } else {
+          setIsConnected(false);
+          const errorMessage = result.error || dataResult?.error || 'Erro ao gerar token de acesso';
+          toast({
+            title: 'Erro ao conectar',
+            description: errorMessage,
+            variant: 'destructive',
+          });
+        }
       }
-    } catch {
+    } catch (error) {
       setIsConnected(false);
+      console.error('❌ [DEBUG] Erro na conexão:', error);
       toast({
         title: 'Erro ao conectar',
-        description: 'Erro ao conectar ao iFood.',
+        description: 'Erro ao conectar ao iFood. Verifique suas credenciais.',
         variant: 'destructive',
       });
     } finally {
