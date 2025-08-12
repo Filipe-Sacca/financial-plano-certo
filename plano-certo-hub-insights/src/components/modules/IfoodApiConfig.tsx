@@ -38,7 +38,7 @@ import { useForm } from 'react-hook-form';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useIfoodConfig } from '@/hooks/useIfoodConfig';
 import { useIfoodMerchants } from '@/hooks/useIfoodMerchants';
-import { IfoodMerchantsService } from '@/utils/ifoodMerchantsService';
+import { syncMerchants } from '@/services/ifoodMerchantsService';
 
 
 interface ApiConfig {
@@ -315,10 +315,10 @@ const MerchantsCard = ({ user }: { user: any }) => {
     setIsLoading(true);
     
     try {
-      console.log('📡 [handleSyncMerchants] Chamando webhook N8N + buscando dados...');
+      console.log('📡 [handleSyncMerchants] Sincronizando lojas...');
       
-      // Estratégia: POST para N8N webhook + GET da tabela
-      const result = await IfoodMerchantsService.syncMerchants(user.id);
+      // Usar o novo serviço com fallback automático
+      const result = await syncMerchants(user.id);
       
       if (!result.success) {
         console.error('❌ [handleSyncMerchants] Erro na sincronização:', result.error);
@@ -330,20 +330,30 @@ const MerchantsCard = ({ user }: { user: any }) => {
         return;
       }
 
-      console.log('✅ [handleSyncMerchants] Sincronização concluída:', result.merchants.length, 'lojas');
+      console.log('✅ [handleSyncMerchants] Sincronização concluída:', result);
       
       // Invalidar queries para atualizar as listas
       queryClient.invalidateQueries({ queryKey: ['ifood-merchants'] });
       
-      if (result.merchants.length === 0) {
+      // Verificar o tipo de resultado
+      const totalMerchants = result.total_merchants || 0;
+      const newMerchants = result.new_merchants?.length || 0;
+      const existingMerchants = result.existing_merchants?.length || 0;
+      
+      if (totalMerchants === 0) {
         toast({
           title: '📭 Nenhuma loja encontrada',
-          description: 'Nenhuma loja foi encontrada na sua conta do iFood ou você já possui todas as lojas sincronizadas.'
+          description: 'Nenhuma loja foi encontrada na sua conta do iFood.'
+        });
+      } else if (newMerchants > 0) {
+        toast({
+          title: '✅ Novas lojas sincronizadas!',
+          description: `${newMerchants} novas lojas adicionadas. Total: ${totalMerchants} lojas.`
         });
       } else {
         toast({
-          title: '✅ Lojas sincronizadas!',
-          description: `${result.merchants.length} lojas sincronizadas via webhook N8N.`
+          title: '✅ Lojas já sincronizadas',
+          description: `Todas as ${existingMerchants} lojas já estavam sincronizadas.`
         });
       }
       
