@@ -24,6 +24,7 @@ export interface StoredToken {
   expires_at: string;
   created_at: string;
   updated_at: string;
+  token_updated_at?: string;
   user_id: string;
 }
 

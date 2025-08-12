@@ -225,7 +225,7 @@ export class IFoodMerchantService {
       }
 
       // Step 2: Fetch merchants from iFood
-      const { success, merchants } = await this.fetchMerchantsFromIFood(token);
+      const { success, merchants } = await this.fetchMerchantsFromIFood(token!);
       
       if (!success) {
         return {
