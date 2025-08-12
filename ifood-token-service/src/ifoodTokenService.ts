@@ -34,11 +34,13 @@ export class IFoodTokenService {
         return null;
       }
 
-      // Check if token is still valid
-      const expiresAt = new Date(data.expires_at);
-      const now = new Date();
+      // Check if token is still valid (expires_at is Unix timestamp in seconds)
+      const expiresAtTimestamp = data.expires_at;
+      const nowTimestamp = Math.floor(Date.now() / 1000);
 
-      if (expiresAt > now) {
+      console.log(`🕐 Token expires at: ${expiresAtTimestamp}, now: ${nowTimestamp}`);
+
+      if (expiresAtTimestamp > nowTimestamp) {
         console.log('✅ Valid token found');
         return data as StoredToken;
       } else {

@@ -157,7 +157,7 @@ export const IfoodApiConfig = () => {
       
       try {
         // Attempt local Node.js service
-        response = await fetch('http://localhost:9000/token', {
+        response = await fetch('http://localhost:9001/token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
