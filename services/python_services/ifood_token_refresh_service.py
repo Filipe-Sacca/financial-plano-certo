@@ -87,8 +87,8 @@ class IFoodTokenRefreshService:
                     access_token=token_data['access_token'],
                     expires_at=token_data['expires_at'],
                     user_id=token_data['user_id'],
-                    created_at=token_data['created_at'],
-                    updated_at=token_data['updated_at']
+                    created_at=token_data.get('created_at', ''),
+                    updated_at=token_data.get('token_updated_at', '')
                 ))
             
             return tokens
@@ -169,7 +169,7 @@ class IFoodTokenRefreshService:
             # Prepare update data (same fields as N8N flow)
             update_data = {
                 "access_token": result.new_token,
-                "updated_at": result.updated_at
+                "token_updated_at": result.updated_at
             }
             
             # Update token in Supabase
@@ -276,7 +276,7 @@ def run_refresh_service():
     try:
         # Get environment variables
         supabase_url = os.getenv('SUPABASE_URL')
-        supabase_key = os.getenv('SUPABASE_ANON_KEY')
+        supabase_key = os.getenv('SUPABASE_KEY')
         
         if not supabase_url or not supabase_key:
             logger.error('❌ Missing Supabase configuration')

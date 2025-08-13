@@ -1,128 +1,224 @@
-# 🏢 Plano Certo Hub - Sistema Integrado iFood
+# 🚀 iFood Integration Hub
 
-## 📁 Estrutura Organizada do Projeto
+Sistema completo de integração com iFood que inclui **renovação automática de tokens a cada 3 horas**, sincronização de dados, dashboard web e automação via N8N.
+
+## ⭐ **RECURSOS PRINCIPAIS**
+
+- ✅ **Renovação automática de tokens** (a cada 3 horas)
+- ✅ **Dashboard web interativo** (React + Supabase)
+- ✅ **Sincronização de produtos e lojas**
+- ✅ **Automação via N8N workflows**
+- ✅ **Monitoramento em tempo real**
+- ✅ **APIs RESTful**
+
+## 🏗️ **ESTRUTURA DO PROJETO**
 
 ```
-📂 Plano Certo Hub/
+📁 iFood Integration Hub/
+├── 🎯 run.py                      # LAUNCHER PRINCIPAL
+├── 📋 package.json                # Configuração do projeto
 │
-├── 📂 frontend/                     # 🎨 Aplicações Frontend
-│   ├── plano-certo-hub-insights/   # Dashboard principal React/TypeScript
-│   └── ccflare/                     # Aplicação secundária
+├── 📁 src/                        # Código Python
+│   ├── main.py                    # Script principal
+│   ├── ifood_api_client.py        # Cliente API iFood
+│   ├── ifood_product_sync.py      # Sincronização
+│   └── config.py                  # Configurações
 │
-├── 📂 backend/                      # 🖥️ Servidor Backend Node.js
-│   ├── server.js                    # Servidor Express principal
-│   ├── test-server.js              # Servidor de testes
-│   └── .env                        # Variáveis de ambiente
+├── 📁 services/                   # Serviços Node.js
+│   ├── ifood-token-service/       # ⭐ RENOVAÇÃO DE TOKENS
+│   └── python_services/           # Serviços Python
 │
-├── 📂 services/                     # ⚙️ Microserviços
-│   ├── ifood-token-service/        # Serviço de tokens OAuth2 iFood
-│   │   ├── src/                    # Código fonte TypeScript
-│   │   └── .env                    # Configurações do serviço
-│   └── python_services/            # Serviços Python alternativos
-│       ├── ifood_token_service.py
-│       └── ifood_merchant_service.py
+├── 📁 frontend/                   # Dashboard Web
+│   └── plano-certo-hub-insights/  # Interface React
 │
-├── 📂 database/                     # 🗄️ Banco de Dados
-│   └── supabase/                   # Configurações Supabase
-│       ├── config.toml
-│       └── migrations/             # Migrações SQL
-│
-├── 📂 scripts-utils/                # 🛠️ Scripts Utilitários
-│   ├── check-*.js                  # Scripts de verificação
-│   ├── create-*.js                 # Scripts de criação
-│   └── db-tools.js                 # Ferramentas de banco
-│
-├── 📂 documentation/                # 📚 Documentação
-│   ├── DOCUMENTACAO_APIs_IFOOD.md
-│   ├── TOKEN_AUTO_RENEWAL.md
-│   └── MERCHANT_STATUS_SERVICE.md
-│
-├── 📂 n8n-workflows/                # 🔄 Workflows N8N
-│   ├── [CREATE] Token de Acesso.json
-│   └── [MERCHANT-STATUS] Verifica se a loja esta aberta.json
-│
-└── 📂 exports/                      # 📤 Arquivos Exportados
-    └── (PDFs, relatórios gerados)
+├── 📁 n8n-workflows/             # Automação N8N
+├── 📁 scripts-utils/             # Scripts utilitários
+├── 📁 config/                    # Configurações
+├── 📁 docs/                      # Documentação
+├── 📁 setup/                     # Scripts de instalação
+├── 📁 tests/                     # Testes
+└── 📁 logs/                      # Logs do sistema
 ```
 
-## 🚀 Como Executar o Sistema Completo
+## 🚀 **INÍCIO RÁPIDO**
 
-### 1️⃣ Frontend (Dashboard Principal)
+### **1. Verificar Status**
+```bash
+python run.py --status
+```
+
+### **2. Verificar Tokens**
+```bash
+python run.py --token-check
+# ou
+npm run token-check
+```
+
+### **3. Monitorar Tokens em Tempo Real**
+```bash
+npm run token-monitor
+```
+
+### **4. Sincronizar Dados**
+```bash
+python run.py --sync
+# ou  
+npm run sync
+```
+
+### **5. Iniciar Dashboard**
+```bash
+npm run dev:frontend
+```
+
+## 🔧 **COMANDOS DISPONÍVEIS**
+
+### **NPM Scripts:**
+```bash
+npm start                 # Status do sistema
+npm run token-check       # Verificar tokens
+npm run token-monitor     # Monitor em tempo real
+npm run sync              # Sincronizar dados
+npm run dev:frontend      # Dashboard (dev)
+npm run dev:token-service # Serviço de tokens (dev)
+npm run setup             # Instalação completa
+```
+
+### **Python Scripts:**
+```bash
+python run.py --status           # Status geral
+python run.py --sync             # Sincronização
+python run.py --token-check      # Verificar tokens
+python run.py --api-server       # Servidor API
+python run.py --merchant-status  # Status das lojas
+```
+
+## ⚙️ **CONFIGURAÇÃO**
+
+### **1. Variáveis de Ambiente**
+Crie um arquivo `.env` na raiz:
+```env
+SUPABASE_URL=sua_url_supabase
+SUPABASE_KEY=sua_chave_supabase
+IFOOD_API_BASE_URL=https://merchant-api.ifood.com.br
+```
+
+### **2. Instalação de Dependências**
+```bash
+npm run setup
+```
+
+### **3. Configurar N8N Workflows**
+Importe os workflows da pasta `n8n-workflows/`
+
+## 🔐 **RENOVAÇÃO AUTOMÁTICA DE TOKENS**
+
+O sistema possui **renovação automática a cada 3 horas**:
+
+### **Arquivo Principal:**
+- `services/ifood-token-service/src/ifoodTokenService.ts`
+
+### **Scheduler:**
+- `services/ifood-token-service/src/tokenScheduler.ts`
+
+### **Verificação Manual:**
+```bash
+node scripts-utils/test-expiration-check.js
+```
+
+### **Monitoramento:**
+```bash
+node scripts-utils/monitor-token-updates.js
+```
+
+## 📊 **DASHBOARD WEB**
+
+Acesse o dashboard em: `http://localhost:5173`
+
+### **Recursos:**
+- ✅ Monitoramento de tokens
+- ✅ Status das integrações
+- ✅ Métricas em tempo real
+- ✅ Gestão de produtos
+- ✅ Relatórios
+
+### **Iniciar:**
+```bash
+cd frontend/plano-certo-hub-insights
+npm run dev
+```
+
+## 🔄 **AUTOMAÇÃO N8N**
+
+### **Workflows Disponíveis:**
+- `[CREATE] Token de Acesso.json` - Criação de tokens
+- `[UPDATE] Atualiza o Token de Acesso.json` - Atualização
+- `[MERCHANT] *.json` - Gestão de lojas
+- `[PRODUCT] *.json` - Gestão de produtos
+
+## 📁 **ESTRUTURA DETALHADA**
+
+### **Serviços Core:**
+```
+services/ifood-token-service/     # ⭐ RENOVAÇÃO DE TOKENS
+├── src/ifoodTokenService.ts      # Serviço principal
+├── src/tokenScheduler.ts         # Scheduler (3h)
+└── src/tokenRefreshService.ts    # Renovação alternativa
+```
+
+### **Frontend:**
+```
+frontend/plano-certo-hub-insights/
+├── src/components/               # Componentes React
+├── src/hooks/                    # Hooks personalizados
+└── supabase/migrations/          # Migrações DB
+```
+
+### **Scripts Utilitários:**
+```
+scripts-utils/
+├── monitor-token-updates.js      # Monitor em tempo real
+├── test-expiration-check.js      # Teste de expiração
+└── test-token-service.js         # Teste do serviço
+```
+
+## 🐛 **SOLUÇÃO DE PROBLEMAS**
+
+### **Tokens não renovam:**
+```bash
+# Verificar status
+python run.py --token-check
+
+# Verificar logs
+cat logs/ifood_sync.log
+
+# Forçar renovação
+node scripts-utils/test-expiration-check.js
+```
+
+### **Dashboard não carrega:**
 ```bash
 cd frontend/plano-certo-hub-insights
 npm install
 npm run dev
-# Acesse: http://localhost:5173
 ```
 
-### 2️⃣ Backend (API Server)
+### **Serviços não funcionam:**
 ```bash
-cd backend
-npm install
-node server.js
-# Rodando na porta 8080
+# Reinstalar dependências
+npm run setup
+
+# Verificar configurações
+python run.py --status
 ```
 
-### 3️⃣ Serviço de Token iFood
-```bash
-cd services/ifood-token-service
-npm install
-npm run dev
-# Rodando na porta 8081
-```
+## 📞 **SUPORTE**
 
-### 4️⃣ Serviços Python (Opcional)
-```bash
-cd services/python_services
-pip install -r requirements.txt
-python api_server.py
-# Rodando na porta 8000
-```
+- 📖 **Documentação:** `docs/`
+- 🔧 **Scripts de teste:** `tests/`
+- 📊 **Logs:** `logs/`
+- ⚙️ **Setup:** `setup/`
 
-## 🔧 Configuração de Ambiente
+---
 
-Todos os arquivos `.env` já estão configurados:
-- ✅ `backend/.env` - Porta 8080
-- ✅ `services/ifood-token-service/.env` - Porta 8081
-- ✅ `frontend/plano-certo-hub-insights/.env` - Frontend
-
-## 📋 Descrição dos Componentes
-
-### Frontend
-- **plano-certo-hub-insights**: Dashboard React com análises e relatórios
-- **ccflare**: Aplicação adicional com TUI e servidor
-
-### Backend
-- Servidor Express.js que gerencia APIs e integrações
-
-### Services
-- **ifood-token-service**: Gerenciamento de tokens OAuth2 do iFood
-  - Renovação automática de tokens
-  - Verificação de validade
-  - Scheduler preventivo
-- **python_services**: Implementações alternativas em Python
-
-### Database
-- Configurações e migrações do Supabase
-- Tabelas: tokens, merchants, products, clients
-
-### Scripts-Utils
-- Ferramentas de desenvolvimento e manutenção
-- Scripts de verificação e criação de dados
-
-### N8N-Workflows
-- Workflows exportados do N8N para automação
-
-## 🌐 Arquitetura
-
-```
-Frontend (React) ←→ Backend (Express) ←→ Supabase
-                           ↓
-                  Token Service (Node.js)
-                           ↓
-                      iFood API
-```
-
-## 📞 Suporte
-
-Consulte a documentação em `documentation/` para mais detalhes sobre cada módulo.
+**🎉 Sistema completo e funcional com renovação automática de tokens a cada 3 horas!**

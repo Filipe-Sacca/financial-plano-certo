@@ -128,8 +128,8 @@ export const MenuManagement = () => {
   const filteredClients = clients?.filter(client => client.ifood_merchant_id) || [];
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 animate-fade-in pb-6 pt-8">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6 mt-4">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
             Gerenciamento de Cardápios
@@ -138,7 +138,7 @@ export const MenuManagement = () => {
             Gerencie cardápios das lojas conectadas ao iFood
           </p>
         </div>
-        <div className="flex space-x-2">
+        <div className="flex flex-wrap gap-2">
           <Button 
             variant="outline" 
             onClick={() => forceRefresh()}

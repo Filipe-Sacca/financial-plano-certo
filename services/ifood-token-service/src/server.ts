@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import { IFoodTokenService } from './ifoodTokenService';
 import { IFoodMerchantService } from './ifoodMerchantService';
 import IFoodMerchantStatusService from './ifoodMerchantStatusService';
+import { IFoodProductService } from './ifoodProductService';
 import { tokenScheduler } from './tokenScheduler';
 import { TokenRequest } from './types';
 
@@ -42,6 +43,7 @@ app.get('/', (req, res) => {
       tokenSchedulerStatus: 'GET /token/scheduler/status',
       merchant: 'POST /merchant',
       merchantCheck: 'GET /merchant/check/:id',
+      products: 'POST /products',
       statusCheck: 'POST /merchant-status/check',
       singleStatus: 'GET /merchant-status/:merchantId',
       startScheduler: 'POST /merchant-status/start-scheduler'
@@ -398,6 +400,52 @@ app.post('/merchant-status/start-scheduler', async (req, res) => {
   } catch (error: any) {
     console.error('❌ Error:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Product synchronization endpoint
+app.post('/products', async (req, res) => {
+  try {
+    // Validate environment variables
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      return res.status(500).json({
+        success: false,
+        error: 'Missing Supabase configuration. Please check environment variables.'
+      });
+    }
+
+    // Validate request body
+    const { user_id, access_token } = req.body;
+
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'user_id is required'
+      });
+    }
+
+    console.log(`🛍️ Processing product sync for user: ${user_id}`);
+
+    // Initialize product service
+    const productService = new IFoodProductService(supabaseUrl, supabaseKey);
+    
+    // Process products
+    const result = await productService.syncProducts(user_id, access_token);
+
+    if (result.success) {
+      return res.json(result);
+    } else {
+      return res.status(500).json(result);
+    }
+  } catch (error: any) {
+    console.error('❌ Product sync error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error'
+    });
   }
 });
 

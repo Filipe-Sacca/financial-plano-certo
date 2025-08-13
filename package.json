@@ -1,0 +1,47 @@
+{
+  "name": "ifood-integration-hub",
+  "version": "1.0.0",
+  "description": "Sistema completo de integração com iFood - Renovação automática de tokens, sincronização de dados e dashboard web",
+  "main": "run.py",
+  "scripts": {
+    "start": "python run.py --status",
+    "sync": "python run.py --sync",
+    "token-check": "node scripts-utils/test-expiration-check.js",
+    "token-monitor": "node scripts-utils/monitor-token-updates.js",
+    "dev:frontend": "cd frontend/plano-certo-hub-insights && npm run dev",
+    "dev:token-service": "cd services/ifood-token-service && npm run dev",
+    "build:frontend": "cd frontend/plano-certo-hub-insights && npm run build",
+    "build:token-service": "cd services/ifood-token-service && npm run build",
+    "install:all": "npm install && cd frontend/plano-certo-hub-insights && npm install && cd ../../services/ifood-token-service && npm install",
+    "setup": "python -m pip install -r config/requirements.txt && npm run install:all"
+  },
+  "keywords": [
+    "ifood",
+    "api",
+    "integration",
+    "token",
+    "automation",
+    "dashboard",
+    "n8n"
+  ],
+  "author": "Plano Certo Hub",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.0.0"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "python": ">=3.8.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "."
+  },
+  "directories": {
+    "src": "src",
+    "config": "config", 
+    "docs": "docs",
+    "tests": "tests",
+    "logs": "logs"
+  }
+}

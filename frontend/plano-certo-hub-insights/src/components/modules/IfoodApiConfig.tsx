@@ -20,6 +20,9 @@ import {
 import { toast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
+import DynamicIntegrationStatus from './DynamicIntegrationStatus';
+import ConnectedAPIsCard from './ConnectedAPIsCard';
+import { useIfoodSyncStatus } from '@/hooks/useIfoodSyncStatus';
 import { 
   Settings, 
   Key,
@@ -51,6 +54,7 @@ interface ApiConfig {
 export const IfoodApiConfig = () => {
   const { user } = useAuth();
   const { data: syncedMerchantsData } = useIfoodMerchants(user?.id);
+  const { refreshStatus: globalRefreshStatus } = useIfoodSyncStatus();
   const [config, setConfig] = useState<ApiConfig>({
     clientId: '',
     clientSecret: '',
@@ -151,30 +155,14 @@ export const IfoodApiConfig = () => {
         aud: user?.aud
       });
       
-      // Try local Python service first, fallback to N8N webhook
-      let response;
-      let result;
-      
-      try {
-        // Attempt local Node.js service
-        response = await fetch('http://localhost:9001/token', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        result = await response.json();
-        console.log('✅ [DEBUG] Resposta do serviço Node.js local:', result);
-      } catch (localError) {
-        console.log('⚠️ [DEBUG] Serviço Node.js local indisponível, tentando N8N...');
-        // Fallback to N8N webhook
-        response = await fetch('https://webhook.n8n.hml.planocertodelivery.com/webhook/token', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        result = await response.json();
-        console.log('✅ [DEBUG] Resposta do webhook N8N:', result);
-      }
+      // Connect to local Node.js service only
+      const response = await fetch('http://localhost:8081/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const result = await response.json();
+      console.log('✅ [DEBUG] Resposta do serviço Node.js local:', result);
 
       // Handle successful response
       if (response.ok && result.success) {
@@ -190,6 +178,11 @@ export const IfoodApiConfig = () => {
           title: '✅ Token gerado com sucesso!',
           description: `Token de acesso iFood criado e armazenado. Expira em ${Math.floor(tokenData.expires_in / 3600)} horas.`
         });
+        
+        // Atualizar status das integrações após token gerado
+        setTimeout(() => {
+          globalRefreshStatus();
+        }, 1000);
       } else if (response.ok && result.message && result.message.includes('Valid token already exists')) {
         // Token já existe e é válido
         const tokenData = result.data;
@@ -204,30 +197,19 @@ export const IfoodApiConfig = () => {
           title: '✅ Token válido encontrado!',
           description: 'Token de acesso já existe e ainda é válido.'
         });
+        
+        // Atualizar status das integrações após confirmar token válido
+        setTimeout(() => {
+          globalRefreshStatus();
+        }, 1000);
       } else {
-        // Handle N8N legacy response format
-        const dataResult = Array.isArray(result) ? result[0] : result;
-        if (response.ok && dataResult.clientId && dataResult.clientSecret) {
-          setConfig({
-            clientId: dataResult.clientId,
-            clientSecret: dataResult.clientSecret,
-            environment: 'sandbox',
-            webhookUrl: ''
-          });
-          setIsConnected(true);
-          toast({
-            title: 'Conexão realizada',
-            description: 'Conexão realizada com sucesso!'
-          });
-        } else {
-          setIsConnected(false);
-          const errorMessage = result.error || dataResult?.error || 'Erro ao gerar token de acesso';
-          toast({
-            title: 'Erro ao conectar',
-            description: errorMessage,
-            variant: 'destructive',
-          });
-        }
+        setIsConnected(false);
+        const errorMessage = result.error || 'Erro ao gerar token de acesso';
+        toast({
+          title: 'Erro ao conectar',
+          description: errorMessage,
+          variant: 'destructive',
+        });
       }
     } catch (error) {
       setIsConnected(false);
@@ -299,7 +281,7 @@ const MerchantsCard = ({ user }: { user: any }) => {
   const queryClient = useQueryClient();
 
   const handleSyncMerchants = async () => {
-    console.log('🚀 [handleSyncMerchants] Iniciando sincronização de lojas via webhook N8N...');
+    console.log('🚀 [handleSyncMerchants] Iniciando sincronização de lojas via serviço local...');
     console.log('🔍 [handleSyncMerchants] User:', { id: user?.id, email: user?.email });
     
     if (!user?.id) {
@@ -317,7 +299,7 @@ const MerchantsCard = ({ user }: { user: any }) => {
     try {
       console.log('📡 [handleSyncMerchants] Sincronizando lojas...');
       
-      // Usar o novo serviço com fallback automático
+      // Usar o serviço local diretamente
       const result = await syncMerchants(user.id);
       
       if (!result.success) {
@@ -350,11 +332,21 @@ const MerchantsCard = ({ user }: { user: any }) => {
           title: '✅ Novas lojas sincronizadas!',
           description: `${newMerchants} novas lojas adicionadas. Total: ${totalMerchants} lojas.`
         });
+        
+        // Atualizar status das integrações após sincronizar merchants
+        setTimeout(() => {
+          globalRefreshStatus();
+        }, 1000);
       } else {
         toast({
           title: '✅ Lojas já sincronizadas',
           description: `Todas as ${existingMerchants} lojas já estavam sincronizadas.`
         });
+        
+        // Atualizar status das integrações para confirmar merchants
+        setTimeout(() => {
+          globalRefreshStatus();
+        }, 1000);
       }
       
     } catch (error) {
@@ -382,7 +374,7 @@ const MerchantsCard = ({ user }: { user: any }) => {
                 Lojas iFood
               </p>
               <p className="text-sm text-gray-600">
-                Sincronizar lojas via webhook N8N
+                Sincronizar lojas via serviço local
               </p>
             </div>
           </div>
@@ -561,7 +553,7 @@ const SyncedMerchantsCard = ({ user }: { user: any }) => {
               <Store className="mx-auto h-12 w-12 text-gray-400 mb-4" />
               <p className="text-gray-500 mb-2">Nenhuma loja encontrada</p>
               <p className="text-sm text-gray-400">
-                Clique em "Carregar Lojas" acima para sincronizar suas lojas do iFood via webhook N8N e visualizá-las aqui.
+                Clique em "Carregar Lojas" acima para sincronizar suas lojas do iFood via serviço local e visualizá-las aqui.
               </p>
             </div>
           </CardContent>
@@ -753,19 +745,7 @@ const SyncedMerchantsCard = ({ user }: { user: any }) => {
 
           {isConnected && (
             <div className="space-y-6 mt-6">
-              <Card>
-                <CardContent className="p-6">
-                  <div className="flex items-center space-x-3">
-                    <div className="p-2 bg-green-100 rounded-lg">
-                      <CheckCircle className="h-6 w-6 text-green-600" />
-                    </div>
-                    <div>
-                      <p className="text-2xl font-bold text-gray-900">4</p>
-                      <p className="text-sm text-gray-600">APIs Conectadas</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+              <ConnectedAPIsCard />
 
               <div className="w-full">
                 {syncedMerchantsData && syncedMerchantsData.length > 0 ? (
@@ -777,28 +757,7 @@ const SyncedMerchantsCard = ({ user }: { user: any }) => {
               
               <div className="mt-8">
                 <h2 className="text-2xl font-bold mb-4">Status das Integrações</h2>
-                {[
-                  { name: 'iFood Authentication', description: 'Sistema de autenticação do iFood', lastSync: '2 minutos atrás' },
-                  { name: 'Merchant API', description: 'Dados dos restaurantes', lastSync: '5 minutos atrás' },
-                  { name: 'Orders API', description: 'Pedidos em tempo real', lastSync: '1 minuto atrás' },
-                  { name: 'Financial API', description: 'Dados financeiros', lastSync: '2 minutos atrás' }
-                ].map((api) => (
-                  <Card key={api.name}>
-                    <CardContent className="flex items-center justify-between p-4">
-                      <div className="flex items-center space-x-4">
-                        <div className="p-2 bg-green-100 rounded-lg">
-                          <CheckCircle className="h-5 w-5 text-green-600" />
-                        </div>
-                        <div>
-                          <h3 className="font-medium text-gray-900">{api.name}</h3>
-                          <p className="text-sm text-gray-600">{api.description}</p>
-                          <p className="text-xs text-gray-500 mt-1">Última sincronização: {api.lastSync}</p>
-                        </div>
-                      </div>
-                      <Badge className="bg-green-100 text-green-800">Conectado</Badge>
-                    </CardContent>
-                  </Card>
-                ))}
+                <DynamicIntegrationStatus />
               </div>
             </div>
           )}

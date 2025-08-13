@@ -316,6 +316,98 @@ export class IFoodTokenService {
   }
 
   /**
+   * Check if a token is about to expire
+   */
+  isTokenExpiring(expiresAt: number, thresholdMinutes: number = 30): boolean {
+    const nowTimestamp = Math.floor(Date.now() / 1000);
+    const thresholdTimestamp = nowTimestamp + (thresholdMinutes * 60);
+    return expiresAt <= thresholdTimestamp;
+  }
+
+  /**
+   * Check expiration status for all tokens
+   */
+  async checkTokenExpirationStatus(): Promise<ServiceResponse> {
+    try {
+      console.log('🔍 Checking expiration status for all tokens...');
+      
+      const { data: tokens, error } = await this.supabase
+        .from('ifood_tokens')
+        .select('*');
+
+      if (error) {
+        console.error('❌ Error fetching tokens:', error);
+        return {
+          success: false,
+          error: 'Failed to fetch tokens from database'
+        };
+      }
+
+      if (!tokens || tokens.length === 0) {
+        console.log('📭 No tokens found');
+        return {
+          success: true,
+          message: 'No tokens found',
+          data: { total: 0, expired: 0, expiring_soon: 0, valid: 0 }
+        };
+      }
+
+      const nowTimestamp = Math.floor(Date.now() / 1000);
+      const results = {
+        total: tokens.length,
+        expired: 0,
+        expiring_soon: 0,
+        valid: 0,
+        tokens: [] as any[]
+      };
+
+      for (const token of tokens) {
+        const expiresAt = Number(token.expires_at);
+        const timeToExpiry = expiresAt - nowTimestamp;
+        const minutesToExpiry = Math.floor(timeToExpiry / 60);
+
+        let status: string;
+        if (expiresAt <= nowTimestamp) {
+          status = 'expired';
+          results.expired++;
+        } else if (this.isTokenExpiring(expiresAt, 30)) {
+          status = 'expiring_soon';
+          results.expiring_soon++;
+        } else {
+          status = 'valid';
+          results.valid++;
+        }
+
+        results.tokens.push({
+          client_id: token.client_id.substring(0, 8) + '...',
+          status,
+          expires_at: new Date(expiresAt * 1000).toISOString(),
+          minutes_to_expiry: minutesToExpiry > 0 ? minutesToExpiry : 0
+        });
+      }
+
+      console.log(`📊 Token expiration status:`);
+      console.log(`   Total tokens: ${results.total}`);
+      console.log(`   Expired: ${results.expired}`);
+      console.log(`   Expiring soon (< 30 min): ${results.expiring_soon}`);
+      console.log(`   Valid: ${results.valid}`);
+
+      return {
+        success: true,
+        message: 'Token expiration check completed',
+        data: results
+      };
+    } catch (error: any) {
+      const errorMsg = `Error checking token expiration: ${error.message || error}`;
+      console.error('❌', errorMsg);
+      return {
+        success: false,
+        error: errorMsg
+      };
+    }
+  }
+
+  /**
    * Update all tokens (preventive renewal before expiration)
    */
   async updateAllExpiredTokens(): Promise<ServiceResponse> {
@@ -381,6 +473,100 @@ export class IFoodTokenService {
       };
     } catch (error: any) {
       const errorMsg = `Error updating tokens: ${error.message || error}`;
+      console.error('❌', errorMsg);
+      return {
+        success: false,
+        error: errorMsg
+      };
+    }
+  }
+
+  /**
+   * Update only tokens that are expired or expiring soon
+   */
+  async updateExpiringTokens(thresholdMinutes: number = 30): Promise<ServiceResponse> {
+    try {
+      console.log(`🔍 Fetching tokens expiring within ${thresholdMinutes} minutes...`);
+      
+      const { data: tokens, error } = await this.supabase
+        .from('ifood_tokens')
+        .select('*');
+
+      if (error) {
+        console.error('❌ Error fetching tokens:', error);
+        return {
+          success: false,
+          error: 'Failed to fetch tokens from database'
+        };
+      }
+
+      if (!tokens || tokens.length === 0) {
+        console.log('📭 No tokens found');
+        return {
+          success: true,
+          message: 'No tokens found to update'
+        };
+      }
+
+      // Filter tokens that are expired or expiring soon
+      const expiringTokens = tokens.filter(token => {
+        const expiresAt = Number(token.expires_at);
+        const nowTimestamp = Math.floor(Date.now() / 1000);
+        return expiresAt <= nowTimestamp || this.isTokenExpiring(expiresAt, thresholdMinutes);
+      });
+
+      console.log(`📋 Found ${expiringTokens.length} of ${tokens.length} tokens that need renewal`);
+
+      if (expiringTokens.length === 0) {
+        return {
+          success: true,
+          message: 'No tokens need renewal at this time',
+          data: {
+            total_tokens: tokens.length,
+            tokens_to_renew: 0,
+            updated_tokens: 0,
+            failed_updates: 0,
+            errors: []
+          }
+        };
+      }
+
+      const results = {
+        total_tokens: tokens.length,
+        tokens_to_renew: expiringTokens.length,
+        updated_tokens: 0,
+        failed_updates: 0,
+        errors: [] as string[]
+      };
+
+      // Update only expiring tokens
+      for (const token of expiringTokens) {
+        console.log(`🔄 Renewing expiring token for client: ${token.client_id.substring(0, 8)}...`);
+        
+        const result = await this.processTokenRequest(
+          token.client_id,
+          token.client_secret,
+          token.user_id,
+          true
+        );
+
+        if (result.success) {
+          results.updated_tokens++;
+          console.log(`✅ Token renewed for client: ${token.client_id.substring(0, 8)}...`);
+        } else {
+          results.failed_updates++;
+          results.errors.push(`Client ${token.client_id.substring(0, 8)}...: ${result.error}`);
+          console.error(`❌ Failed to renew token for client: ${token.client_id.substring(0, 8)}...`);
+        }
+      }
+
+      return {
+        success: results.failed_updates === 0,
+        message: `Renewed ${results.updated_tokens} of ${results.tokens_to_renew} expiring tokens`,
+        data: results
+      };
+    } catch (error: any) {
+      const errorMsg = `Error updating expiring tokens: ${error.message || error}`;
       console.error('❌', errorMsg);
       return {
         success: false,

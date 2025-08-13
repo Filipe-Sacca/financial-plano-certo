@@ -16,9 +16,9 @@ export class TokenScheduler {
 
   /**
    * Start the automatic token renewal scheduler
-   * @param intervalMinutes - Interval in minutes between checks (default: 120 minutes / 2 hours)
+   * @param intervalMinutes - Interval in minutes between renewals (default: 180 minutes / 3 hours)
    */
-  start(intervalMinutes: number = 120): void {
+  start(intervalMinutes: number = 180): void {
     if (this.isRunning) {
       console.log('⚠️ Token scheduler is already running');
       return;
@@ -27,9 +27,9 @@ export class TokenScheduler {
     const intervalMs = intervalMinutes * 60 * 1000;
     
     console.log('🚀 ===================================');
-    console.log('⏰ Starting Token Preventive Renewal Scheduler');
-    console.log(`📅 Interval: ${intervalMinutes} minutes`);
-    console.log(`🔄 Strategy: Renew ALL tokens preventively (before expiration)`);
+    console.log('⏰ Starting Token Mandatory Renewal Scheduler');
+    console.log(`📅 Interval: ${intervalMinutes} minutes (every 3 hours)`);
+    console.log(`🔄 Strategy: Mandatory renewal every 3 hours + expiring tokens check`);
     console.log(`🕐 Next renewal in: ${intervalMinutes} minutes`);
     console.log('🚀 ===================================');
 
@@ -57,41 +57,45 @@ export class TokenScheduler {
   }
 
   /**
-   * Check and update all tokens preventively
+   * Mandatory token renewal every 3 hours (forces renewal of ALL tokens)
    */
   private async checkAndUpdateTokens(): Promise<void> {
     try {
       console.log('');
       console.log('🔄 ===================================');
-      console.log(`🕐 Preventive token renewal started at ${new Date().toISOString()}`);
+      console.log(`🕐 MANDATORY token renewal started at ${new Date().toISOString()}`);
+      console.log(`⚠️ POLICY: All tokens MUST be renewed every 3 hours`);
       console.log('🔄 ===================================');
 
-      const result = await this.service.updateAllExpiredTokens();
-
-      if (result.success) {
-        const data = result.data as any;
-        console.log('✅ Preventive token renewal completed successfully');
-        console.log(`📊 Statistics:`);
-        console.log(`   - Total tokens in database: ${data.total_tokens}`);
-        console.log(`   - Tokens renewed: ${data.updated_tokens}`);
-        console.log(`   - Failed renewals: ${data.failed_updates}`);
+      // Mandatory renewal: ALL tokens must be renewed every 3 hours
+      console.log('🔄 Starting mandatory renewal of ALL tokens...');
+      
+      const renewResult = await this.service.updateAllExpiredTokens();
+      
+      if (renewResult.success) {
+        const renewData = renewResult.data as any;
+        console.log('✅ Mandatory token renewal completed successfully');
+        console.log(`📊 Renewal Statistics:`);
+        console.log(`   - Total tokens in database: ${renewData.total_tokens}`);
+        console.log(`   - Tokens renewed: ${renewData.updated_tokens}`);
+        console.log(`   - Failed renewals: ${renewData.failed_updates}`);
         
-        if (data.updated_tokens === data.total_tokens) {
+        if (renewData.updated_tokens === renewData.total_tokens) {
           console.log('💚 All tokens renewed successfully!');
-        } else if (data.failed_updates > 0) {
+        } else if (renewData.failed_updates > 0) {
           console.log('⚠️ Some tokens failed to renew:');
-          data.errors.forEach((error: string) => console.log(`   - ${error}`));
+          renewData.errors.forEach((error: string) => console.log(`   - ${error}`));
         }
       } else {
-        console.error('❌ Preventive token renewal failed:', result.error);
+        console.error('❌ Mandatory token renewal failed:', renewResult.error);
       }
 
       console.log('🔄 ===================================');
-      console.log(`🕐 Next preventive renewal at ${this.getNextCheckTime()}`);
+      console.log(`🕐 Next mandatory renewal scheduled for ${this.getNextCheckTime()}`);
       console.log('🔄 ===================================');
       console.log('');
     } catch (error) {
-      console.error('❌ Unexpected error during preventive token renewal:', error);
+      console.error('❌ Unexpected error during mandatory token renewal:', error);
     }
   }
 
@@ -102,7 +106,7 @@ export class TokenScheduler {
     if (!this.intervalId) return 'Scheduler not running';
     
     // Get interval in milliseconds from the stored timeout
-    const intervalMs = 120 * 60 * 1000; // Default to 2 hours
+    const intervalMs = 180 * 60 * 1000; // 3 hours mandatory renewal
     const nextCheck = new Date(Date.now() + intervalMs);
     return nextCheck.toISOString();
   }

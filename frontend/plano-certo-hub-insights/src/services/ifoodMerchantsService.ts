@@ -1,8 +1,7 @@
 import { supabase } from '../integrations/supabase/client';
 
 // Service URLs
-const LOCAL_SERVICE_URL = 'http://localhost:9002';
-const N8N_WEBHOOK_URL = 'https://webhook.n8n.hml.planocertodelivery.com/webhook/merchant';
+const LOCAL_SERVICE_URL = 'http://localhost:8081';
 
 interface MerchantSyncResult {
   success: boolean;
@@ -21,11 +20,11 @@ async function checkLocalService(): Promise<boolean> {
   try {
     const response = await fetch(`${LOCAL_SERVICE_URL}/health`, {
       method: 'GET',
-      signal: AbortSignal.timeout(2000) // 2 second timeout
+      signal: AbortSignal.timeout(5000) // 5 second timeout
     });
     return response.ok;
   } catch (error) {
-    console.log('❌ Local service not available, will use N8N webhook');
+    console.log('❌ Local service not available');
     return false;
   }
 }
@@ -61,55 +60,9 @@ async function syncMerchantsLocal(userId: string, accessToken?: string): Promise
   }
 }
 
-/**
- * Sync merchants with N8N webhook (fallback)
- */
-async function syncMerchantsN8N(userId: string, accessToken?: string): Promise<MerchantSyncResult> {
-  try {
-    console.log('🔄 Syncing merchants via N8N webhook (fallback)...');
-    
-    const response = await fetch(N8N_WEBHOOK_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        user_id: userId,
-        access_token: accessToken
-      })
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`N8N webhook error: ${response.status} - ${errorText}`);
-    }
-
-    const data = await response.json();
-    
-    // N8N might return data in a different format, normalize it
-    if (data.output === 'Clientes_existentes') {
-      return {
-        success: true,
-        message: 'Merchants already exist in database',
-        existing_merchants: data.merchants || []
-      };
-    }
-
-    return {
-      success: true,
-      message: data.message || 'Merchants synced successfully',
-      new_merchants: data.new_merchants || [],
-      existing_merchants: data.existing_merchants || [],
-      total_merchants: data.total_merchants || 0
-    };
-  } catch (error: any) {
-    console.error('❌ N8N webhook error:', error);
-    throw error;
-  }
-}
 
 /**
- * Main function to sync merchants with automatic fallback
+ * Main function to sync merchants using local service only
  */
 export async function syncMerchants(userId: string, accessToken?: string): Promise<MerchantSyncResult> {
   try {
@@ -138,18 +91,12 @@ export async function syncMerchants(userId: string, accessToken?: string): Promi
     // Check if local service is available
     const isLocalAvailable = await checkLocalService();
 
-    // Try local service first, then fallback to N8N
-    if (isLocalAvailable) {
-      try {
-        return await syncMerchantsLocal(userId, accessToken);
-      } catch (localError) {
-        console.warn('⚠️ Local service failed, trying N8N webhook...', localError);
-        return await syncMerchantsN8N(userId, accessToken);
-      }
-    } else {
-      // Local service not available, use N8N directly
-      return await syncMerchantsN8N(userId, accessToken);
+    if (!isLocalAvailable) {
+      throw new Error('Local service is not available. Please ensure the iFood Token Service is running on port 8081.');
     }
+
+    // Use local service only
+    return await syncMerchantsLocal(userId, accessToken);
   } catch (error: any) {
     console.error('❌ Merchant sync failed:', error);
     return {
