@@ -110,7 +110,7 @@ claude mcp add <nome-do-servidor>
 
 ### 3.1 Aplicação Obrigatória
 
-O sequential-thinking (`mcp__server-sequential-thinking__sequentialthinking`) é **mandatório** para todas as operações que envolvam:
+O sequential-thinking (`mcp__server-sequential-thinking__sequentialthinking`) é **mandatório** e **obrigatório** para todas as operações que envolvam:
 
 - Análise e validação de código ou texto
 - Tomada de decisões complexas

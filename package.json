@@ -27,7 +27,8 @@
   "author": "Plano Certo Hub",
   "license": "MIT",
   "dependencies": {
-    "dotenv": "^16.0.0"
+    "dotenv": "^16.0.0",
+    "uv": "^1.4.0"
   },
   "engines": {
     "node": ">=16.0.0",
@@ -39,7 +40,7 @@
   },
   "directories": {
     "src": "src",
-    "config": "config", 
+    "config": "config",
     "docs": "docs",
     "tests": "tests",
     "logs": "logs"
