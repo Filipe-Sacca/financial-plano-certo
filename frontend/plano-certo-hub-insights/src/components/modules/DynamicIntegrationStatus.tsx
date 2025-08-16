@@ -18,7 +18,12 @@ const DynamicIntegrationStatus = ({ onTokenGenerated }: DynamicIntegrationStatus
   const [isSyncingProducts, setIsSyncingProducts] = useState(false);
 
   const handleSyncProducts = async () => {
+    console.log('🚀 [SYNC START] Função handleSyncProducts chamada');
+    console.log('👤 [AUTH CHECK] User object:', user);
+    console.log('🆔 [AUTH CHECK] User ID:', user?.id);
+    
     if (!user?.id) {
+      console.error('❌ [AUTH ERROR] Usuário não autenticado');
       toast({
         title: 'Erro',
         description: 'Usuário não autenticado',
@@ -27,10 +32,13 @@ const DynamicIntegrationStatus = ({ onTokenGenerated }: DynamicIntegrationStatus
       return;
     }
 
+    console.log('✅ [AUTH OK] Usuário autenticado, iniciando sincronização');
     setIsSyncingProducts(true);
     
     try {
-      console.log('🛍️ Iniciando sincronização de produtos...');
+      console.log('🛍️ [STEP 1] Iniciando sincronização de produtos...');
+      console.log('🔗 [API CALL] URL: http://localhost:8081/products');
+      console.log('📤 [REQUEST] Payload:', { user_id: 'c1488646-aca8-4220-aacc-00e7ae3d6490' });
       
       const response = await fetch('http://localhost:8081/products', {
         method: 'POST',
@@ -38,28 +46,45 @@ const DynamicIntegrationStatus = ({ onTokenGenerated }: DynamicIntegrationStatus
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          user_id: user.id
+          user_id: 'c1488646-aca8-4220-aacc-00e7ae3d6490' // Temporary: using existing token user_id
         })
       });
 
+      console.log('📥 [RESPONSE] Status:', response.status);
+      console.log('📥 [RESPONSE] Headers:', Object.fromEntries(response.headers.entries()));
+      
       const result = await response.json();
+      console.log('📊 [RESULT] Response data:', result);
       
       if (result.success) {
+        console.log('✅ [SUCCESS] Sincronização concluída com sucesso!');
+        console.log('📊 [METRICS] Produtos sincronizados:', result.total_products || 0);
+        console.log('🆕 [METRICS] Novos produtos:', result.new_products || 0);
+        console.log('🔄 [METRICS] Produtos atualizados:', result.updated_products || 0);
+        
         toast({
           title: '✅ Produtos sincronizados!',
           description: `${result.total_products || 0} produtos sincronizados. ${result.new_products || 0} novos, ${result.updated_products || 0} atualizados.`,
         });
         
+        console.log('🔄 [STATUS REFRESH] Agendando refresh do status em 1 segundo...');
         // Atualizar status das integrações
         setTimeout(() => {
+          console.log('🔄 [STATUS REFRESH] Executando refreshStatus...');
           refreshStatus();
         }, 1000);
       } else {
+        console.error('❌ [API ERROR] Resposta de erro da API:', result);
+        console.error('❌ [API ERROR] Mensagem:', result.error);
         throw new Error(result.error || 'Erro na sincronização');
       }
       
     } catch (error: any) {
-      console.error('❌ Erro na sincronização de produtos:', error);
+      console.error('❌ [CATCH ERROR] Erro capturado na sincronização:', error);
+      console.error('❌ [CATCH ERROR] Stack trace:', error.stack);
+      console.error('❌ [CATCH ERROR] Error name:', error.name);
+      console.error('❌ [CATCH ERROR] Error message:', error.message);
+      
       toast({
         title: 'Erro na sincronização',
         description: error.message || 'Erro ao sincronizar produtos do iFood',
