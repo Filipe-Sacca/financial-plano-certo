@@ -1,19 +1,8 @@
 
 import { 
-  LayoutDashboard, 
-  Users, 
-  FileSpreadsheet, 
-  TrendingUp, 
   Utensils,
   Settings,
-  Activity,
-  Stethoscope,
-  Zap,
-  MessageCircle,
-  HelpCircle,
-  FileText,
-  ShoppingBag,
-  BarChart3
+  Activity
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -25,20 +14,9 @@ interface SidebarProps {
 
 export const Sidebar = ({ activeModule, onModuleChange }: SidebarProps) => {
   const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'ifood-analytics', label: 'Análise iFood', icon: ShoppingBag },
-    { id: 'ifood-advanced-analytics', label: 'Análise Financeira iFood', icon: BarChart3 },
-    { id: 'clients', label: 'Clientes', icon: Users },
-    { id: 'excel-upload', label: 'Upload Excel', icon: FileSpreadsheet },
-    { id: 'menu-optimization', label: 'Otimização Menu', icon: TrendingUp },
     { id: 'menu-management', label: 'Gestão Menu', icon: Utensils },
     { id: 'ifood-api', label: 'API iFood', icon: Settings },
     { id: 'store-monitoring', label: 'Monitoramento', icon: Activity },
-    { id: 'diagnostics', label: 'Diagnósticos', icon: Stethoscope },
-    { id: 'automation', label: 'Automação', icon: Zap },
-    { id: 'assistant', label: 'Assistente IA', icon: MessageCircle },
-    { id: 'reports', label: 'Relatórios', icon: FileText },
-    { id: 'support', label: 'Suporte', icon: HelpCircle },
   ];
 
   return (

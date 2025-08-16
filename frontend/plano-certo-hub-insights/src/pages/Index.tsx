@@ -2,20 +2,9 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Sidebar } from '@/components/Sidebar';
 import { Header } from '@/components/Header';
-import { Dashboard } from '@/components/Dashboard';
-import { ClientManagement } from '@/components/modules/ClientManagement';
-import { ExcelUploadModule } from '@/components/modules/ExcelUploadModule';
-import { MenuOptimization } from '@/components/modules/MenuOptimization';
 import { MenuManagement } from '@/components/modules/MenuManagement';
 import { IfoodApiConfig } from '@/components/modules/IfoodApiConfig';
 import { StoreMonitoring } from '@/components/modules/StoreMonitoring';
-import { DiagnosticModule } from '@/components/modules/DiagnosticModule';
-import { AutomationModule } from '@/components/modules/AutomationModule';
-import { AssistantModule } from '@/components/modules/AssistantModule';
-import { SupportModule } from '@/components/modules/SupportModule';
-import { ReportsModule } from '@/components/modules/ReportsModule';
-import { IfoodAnalytics } from '@/components/modules/IfoodAnalytics';
-import IfoodAdvancedAnalytics from '@/components/modules/IfoodAdvancedAnalytics';
 import { DateRange } from 'react-day-picker';
 import { format, subDays } from 'date-fns';
 import { useAuth } from '@/App';
@@ -24,7 +13,7 @@ import { toast } from '@/components/ui/use-toast';
 
 export default function Index() {
   const { user } = useAuth();
-  const [activeModule, setActiveModule] = useState('dashboard');
+  const [activeModule, setActiveModule] = useState('menu-management');
   const [selectedClient, setSelectedClient] = useState('all');
   const [selectedPeriod, setSelectedPeriod] = useState('30d');
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
@@ -100,47 +89,15 @@ export default function Index() {
   }, [selectedPeriod, dateRange]);
 
   const renderModule = () => {
-    const commonProps = {
-      selectedClient: selectedClient === 'all' ? undefined : selectedClient,
-      selectedPeriod,
-      dateRange: calculatedDateRange
-    };
-
     switch (activeModule) {
-      case 'dashboard':
-        return <Dashboard {...commonProps} />;
-      case 'ifood-analytics':
-        return <IfoodAnalytics {...commonProps} />;
-      case 'ifood-advanced-analytics':
-        return <IfoodAdvancedAnalytics 
-          selectedClient={selectedClient === 'all' ? undefined : selectedClient}
-          selectedPeriod={selectedPeriod}
-          dateRange={dateRange}
-        />;
-      case 'clients':
-        return <ClientManagement />;
-      case 'excel-upload':
-        return <ExcelUploadModule />;
-      case 'menu-optimization':
-        return <MenuOptimization {...commonProps} />;
       case 'menu-management':
         return <MenuManagement />;
       case 'ifood-api':
         return <IfoodApiConfig />;
       case 'store-monitoring':
         return <StoreMonitoring />;
-      case 'diagnostics':
-        return <DiagnosticModule />;
-      case 'automation':
-        return <AutomationModule />;
-      case 'assistant':
-        return <AssistantModule />;
-      case 'support':
-        return <SupportModule />;
-      case 'reports':
-        return <ReportsModule {...commonProps} />;
       default:
-        return <Dashboard {...commonProps} />;
+        return <MenuManagement />;
     }
   };
 
