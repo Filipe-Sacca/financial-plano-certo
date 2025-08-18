@@ -1,5 +1,5 @@
 
-import { Menu, Bell, User, Calendar, Users } from 'lucide-react';
+import { Menu, Bell, User, Calendar, Users, Moon, Sun } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DatePickerWithRange } from '@/components/ui/date-picker';
@@ -16,6 +16,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem
 } from '@/components/ui/dropdown-menu';
+import { useTheme } from '@/contexts/ThemeContext';
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -41,6 +42,7 @@ export const Header = ({
   const { data: clientsData } = useClients();
   const { user } = useAuth();
   const { data: merchantsData } = useIfoodMerchants(user?.id);
+  const { theme, toggleTheme } = useTheme();
   const [profileName, setProfileName] = useState('');
 
   useEffect(() => {
@@ -117,7 +119,7 @@ export const Header = ({
   ];
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 bg-white border-b border-gray-200 shadow-sm">
+    <header className="fixed top-0 left-0 right-0 z-50 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-sm">
       <style>{`
         .logo-container * {
           border: none !important;
@@ -200,6 +202,21 @@ export const Header = ({
           </>
         )}
         <div className="flex items-center space-x-4">
+          {/* Theme Toggle */}
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={toggleTheme}
+            className="relative"
+            title={`Mudar para modo ${theme === 'light' ? 'escuro' : 'claro'}`}
+          >
+            {theme === 'light' ? (
+              <Moon className="h-5 w-5" />
+            ) : (
+              <Sun className="h-5 w-5" />
+            )}
+          </Button>
+          
           <Button variant="ghost" size="sm" className="relative">
             <Bell className="h-5 w-5" />
             <span className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full animate-pulse"></span>

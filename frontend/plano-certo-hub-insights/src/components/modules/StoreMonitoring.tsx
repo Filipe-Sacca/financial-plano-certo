@@ -178,10 +178,10 @@ export const StoreMonitoring = () => {
                 <CheckCircle className="h-6 w-6 text-green-600" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-2xl font-bold text-gray-900 mb-1">
+                <p className="text-2xl font-bold text-white mb-1">
                   {isLoading ? '...' : onlineStores}
                 </p>
-                <p className="text-sm text-gray-600">Lojas Disponíveis</p>
+                <p className="text-sm text-white">Lojas Disponíveis</p>
               </div>
             </div>
           </CardContent>
@@ -194,10 +194,10 @@ export const StoreMonitoring = () => {
                 <AlertTriangle className="h-6 w-6 text-red-600" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-2xl font-bold text-gray-900 mb-1">
+                <p className="text-2xl font-bold text-white mb-1">
                   {isLoading ? '...' : offlineStores}
                 </p>
-                <p className="text-sm text-gray-600">Lojas Indisponíveis</p>
+                <p className="text-sm text-white">Lojas Indisponíveis</p>
               </div>
             </div>
           </CardContent>
@@ -210,10 +210,10 @@ export const StoreMonitoring = () => {
                 <Store className="h-6 w-6 text-blue-600" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-2xl font-bold text-gray-900 mb-1">
+                <p className="text-2xl font-bold text-white mb-1">
                   {isLoading ? '...' : totalStores}
                 </p>
-                <p className="text-sm text-gray-600">Total de Lojas</p>
+                <p className="text-sm text-white">Total de Lojas</p>
               </div>
             </div>
           </CardContent>
@@ -226,10 +226,10 @@ export const StoreMonitoring = () => {
                 <Pause className="h-6 w-6 text-yellow-600" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-2xl font-bold text-gray-900 mb-1">
+                <p className="text-2xl font-bold text-white mb-1">
                   {productsLoading ? '...' : productsStats.inactiveProducts}
                 </p>
-                <p className="text-sm text-gray-600">Produtos Indisponíveis</p>
+                <p className="text-sm text-white">Produtos Indisponíveis</p>
               </div>
             </div>
           </CardContent>

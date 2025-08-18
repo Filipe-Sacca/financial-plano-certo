@@ -1,7 +1,7 @@
 import { supabase } from '../integrations/supabase/client';
 
 // Service URLs
-const LOCAL_SERVICE_URL = 'http://localhost:8081';
+const LOCAL_SERVICE_URL = 'http://localhost:8082';
 
 interface MerchantSyncResult {
   success: boolean;
@@ -152,5 +152,217 @@ export async function getUserMerchants(userId: string) {
   } catch (error) {
     console.error('Error fetching merchants:', error);
     return [];
+  }
+}
+
+/**
+ * Sync all merchants for a user - Enhanced bulk synchronization
+ * Gets all merchant_ids from database and refreshes their data from iFood API
+ */
+export async function syncAllMerchants(userId: string): Promise<{
+  success: boolean;
+  total_processed: number;
+  updated_merchants: string[];
+  failed_merchants: Array<{ merchant_id: string; error: string }>;
+  message?: string;
+  error?: string;
+}> {
+  try {
+    console.log(`🔄 Starting bulk merchant sync for user: ${userId}`);
+
+    // Validate inputs
+    if (!userId) {
+      return {
+        success: false,
+        total_processed: 0,
+        updated_merchants: [],
+        failed_merchants: [],
+        error: 'User ID is required'
+      };
+    }
+
+    // Check if local service is available
+    const isLocalAvailable = await checkLocalService();
+    if (!isLocalAvailable) {
+      return {
+        success: false,
+        total_processed: 0,
+        updated_merchants: [],
+        failed_merchants: [],
+        error: 'Local service is not available. Please ensure the iFood Token Service is running on port 8081.'
+      };
+    }
+
+    // Call the new bulk sync endpoint
+    const response = await fetch(`${LOCAL_SERVICE_URL}/merchants/sync-all`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        user_id: userId
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return {
+        success: false,
+        total_processed: 0,
+        updated_merchants: [],
+        failed_merchants: [],
+        error: data.error || 'Failed to sync all merchants'
+      };
+    }
+
+    console.log(`✅ Bulk sync completed: ${data.message}`);
+    return data;
+
+  } catch (error: any) {
+    console.error('❌ Error in bulk merchant sync:', error);
+    return {
+      success: false,
+      total_processed: 0,
+      updated_merchants: [],
+      failed_merchants: [],
+      error: error.message || 'Network error during bulk sync'
+    };
+  }
+}
+
+/**
+ * Get individual merchant details - Database first, then API + save
+ * Implements the user's desired logic:
+ * 1. Check database first - if exists, return "already exists"
+ * 2. If not exists, fetch from API and save to database
+ */
+export async function getMerchantDetail(merchantId: string, userId: string): Promise<{
+  success: boolean;
+  merchant?: any;
+  error?: string;
+  action?: 'found_in_db' | 'added_from_api';
+}> {
+  try {
+    console.log(`🔍 Checking merchant: ${merchantId} for user: ${userId}`);
+
+    // Validate inputs
+    if (!merchantId || !userId) {
+      return {
+        success: false,
+        error: 'merchantId and userId are required'
+      };
+    }
+
+    // STEP 1: Check database first - if exists, don't do anything else
+    console.log('🗄️ Checking if merchant already exists in database...');
+    console.log(`🔍 Query params: merchant_id=${merchantId}, user_id=${userId}`);
+    
+    const { data: dbMerchant, error: dbError } = await supabase
+      .from('ifood_merchants')
+      .select('*')
+      .eq('merchant_id', merchantId)
+      .eq('user_id', userId)
+      .maybeSingle(); // Use maybeSingle instead of single to handle "not found" gracefully
+    
+    console.log('📊 Database query result:', { 
+      found: !!dbMerchant, 
+      error: dbError?.message || 'none',
+      errorCode: dbError?.code || 'none'
+    });
+
+    if (dbMerchant && !dbError) {
+      // Merchant already exists - just return it, don't do anything else
+      console.log(`✅ Merchant ${merchantId} already exists in database - no action needed`);
+      
+      return {
+        success: true,
+        merchant: {
+          id: dbMerchant.merchant_id,
+          name: dbMerchant.name,
+          corporateName: dbMerchant.corporate_name,
+          phone: dbMerchant.phone,
+          description: dbMerchant.description,
+          address: {
+            street: dbMerchant.address_street,
+            number: dbMerchant.address_number,
+            complement: dbMerchant.address_complement,
+            neighborhood: dbMerchant.address_neighborhood,
+            city: dbMerchant.address_city,
+            state: dbMerchant.address_state,
+            zipCode: dbMerchant.address_zip_code,
+            country: dbMerchant.address_country
+          },
+          status: dbMerchant.status,
+          lastSyncAt: dbMerchant.last_sync_at
+        },
+        action: 'found_in_db'
+      };
+    }
+
+    // STEP 2: Merchant doesn't exist - fetch from API and save to database
+    console.log(`📡 Merchant not found in database, will fetch from API and save...`);
+    
+    // Check if local service is available (needed for API call)
+    const isLocalAvailable = await checkLocalService();
+    if (!isLocalAvailable) {
+      return {
+        success: false,
+        error: 'Merchant não encontrado no banco e serviço backend (porta 8081) não está disponível. Inicie o backend para buscar novos merchants na API iFood.'
+      };
+    }
+
+    // Call the backend endpoint that will fetch from API and save to database
+    const response = await fetch(`${LOCAL_SERVICE_URL}/merchants/${merchantId}?user_id=${userId}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      const statusCode = response.status;
+      let errorMessage = data.error || 'Failed to fetch merchant details';
+      
+      // Map status codes to user-friendly messages
+      switch (statusCode) {
+        case 400:
+          errorMessage = 'Parâmetros inválidos';
+          break;
+        case 401:
+          errorMessage = 'Token de acesso não encontrado. Faça login no iFood primeiro.';
+          break;
+        case 403:
+          errorMessage = 'Acesso negado. Você não tem permissão para acessar esta loja.';
+          break;
+        case 404:
+          errorMessage = 'Loja não encontrada no iFood.';
+          break;
+        case 500:
+          errorMessage = 'Erro interno do servidor.';
+          break;
+      }
+
+      return {
+        success: false,
+        error: errorMessage
+      };
+    }
+
+    console.log(`✅ Successfully fetched and saved merchant: ${data.merchant?.name}`);
+    return {
+      success: true,
+      merchant: data.merchant,
+      action: 'added_from_api'
+    };
+
+  } catch (error: any) {
+    console.error('❌ Error processing merchant details:', error);
+    return {
+      success: false,
+      error: error.message || 'Network error while processing merchant details'
+    };
   }
 }

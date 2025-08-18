@@ -10,6 +10,8 @@ import Register from "./pages/auth/Register";
 import Recuperar from "./pages/auth/Recuperar";
 import { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import NavigationLogger from "@/components/NavigationLogger";
+import { ThemeProvider } from "@/contexts/ThemeContext";
 
 const queryClient = new QueryClient();
 
@@ -21,8 +23,14 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    console.log('🚀 [AUTH INIT] Inicializando autenticação...');
+    
     supabase.auth.getSession().then(({ data }) => {
       const sessionUser = data.session?.user ?? null;
+      
+      console.log('📋 [SESSION] Sessão obtida:', data.session ? 'Ativa' : 'Nenhuma');
+      console.log('👤 [SESSION] Usuário:', sessionUser ? sessionUser.id : 'Nenhum');
+      console.log('📧 [SESSION] Email:', sessionUser?.email || 'N/A');
       
       setUser(sessionUser);
       setLoading(false);
@@ -30,6 +38,10 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
     
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       const sessionUser = session?.user ?? null;
+      
+      console.log('🔄 [AUTH CHANGE] Evento de mudança de auth:', _event);
+      console.log('👤 [AUTH CHANGE] Novo usuário:', sessionUser ? sessionUser.id : 'Nenhum');
+      console.log('📧 [AUTH CHANGE] Email:', sessionUser?.email || 'N/A');
       
       setUser(sessionUser);
       setLoading(false);
@@ -64,11 +76,13 @@ function ProtectedRoute({ children }: { children: JSX.Element }) {
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <AuthProvider>
+    <ThemeProvider defaultTheme="light" storageKey="plano-certo-theme">
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <AuthProvider>
         <BrowserRouter>
+          <NavigationLogger />
           <Routes>
             <Route path="/auth" element={<Login />} />
             <Route path="/auth/cadastro" element={<Register />} />
@@ -85,8 +99,9 @@ const App = () => (
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
-      </AuthProvider>
-    </TooltipProvider>
+        </AuthProvider>
+      </TooltipProvider>
+    </ThemeProvider>
   </QueryClientProvider>
 );
 

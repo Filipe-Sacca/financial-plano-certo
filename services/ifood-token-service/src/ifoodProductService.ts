@@ -63,13 +63,21 @@ export class IFoodProductService {
       let token = accessToken;
       if (!token) {
         console.log('🔍 [STEP 1] Buscando token de acesso no banco de dados...');
+        console.log('🔍 [TOKEN QUERY] user_id procurado:', userId);
+        
         const { data: tokenData, error: tokenError } = await this.supabase
           .from('ifood_tokens')
-          .select('access_token')
+          .select('access_token, client_id, created_at, token_updated_at')
           .eq('user_id', userId)
           .single();
 
+        console.log('📊 [TOKEN RESULT] Token encontrado:', !!tokenData);
+        console.log('📊 [TOKEN RESULT] Client ID:', tokenData?.client_id || 'N/A');
+        console.log('❌ [TOKEN ERROR] Erro:', tokenError?.message || 'Nenhum');
+        
         if (tokenError || !tokenData?.access_token) {
+          console.error('❌ [TOKEN FAILURE] Token não encontrado para user_id:', userId);
+          console.error('❌ [TOKEN FAILURE] Erro detalhado:', tokenError);
           return {
             success: false,
             error: 'Token de acesso não encontrado. Faça login no iFood primeiro.'
@@ -77,6 +85,7 @@ export class IFoodProductService {
         }
 
         token = tokenData.access_token;
+        console.log('✅ [TOKEN SUCCESS] Token obtido, tamanho:', token?.length || 0);
         console.log('✅ [STEP 1] Token encontrado no banco de dados');
       }
 
@@ -108,7 +117,7 @@ export class IFoodProductService {
           const result = await this.processMerchantProducts(
             merchant.merchant_id, 
             merchant.client_id,
-            token
+            token!
           );
 
           totalProducts += result.total || 0;

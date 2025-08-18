@@ -5,6 +5,7 @@ import { Header } from '@/components/Header';
 import { MenuManagement } from '@/components/modules/MenuManagement';
 import { IfoodApiConfig } from '@/components/modules/IfoodApiConfig';
 import { StoreMonitoring } from '@/components/modules/StoreMonitoring';
+import OpeningHoursManager from '@/components/modules/OpeningHoursManager';
 import { DateRange } from 'react-day-picker';
 import { format, subDays } from 'date-fns';
 import { useAuth } from '@/App';
@@ -96,13 +97,15 @@ export default function Index() {
         return <IfoodApiConfig />;
       case 'store-monitoring':
         return <StoreMonitoring />;
+      case 'opening-hours':
+        return <OpeningHoursManager />;
       default:
         return <MenuManagement />;
     }
   };
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
       <Sidebar activeModule={activeModule} onModuleChange={setActiveModule} />
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header 
@@ -115,7 +118,7 @@ export default function Index() {
           dateRange={dateRange}
           onDateRangeChange={setDateRange}
         />
-        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-50 p-6">
+        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-50 dark:bg-gray-900 p-6">
           {renderModule()}
         </main>
       </div>

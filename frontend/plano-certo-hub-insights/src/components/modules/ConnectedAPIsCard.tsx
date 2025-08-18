@@ -47,10 +47,10 @@ const ConnectedAPIsCard = () => {
             {getStatusIcon()}
           </div>
           <div>
-            <p className="text-2xl font-bold text-gray-900">
+            <p className="text-2xl font-bold text-foreground">
               {loading ? '...' : connectedCount}
             </p>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-muted-foreground">
               {getStatusText()}
             </p>
           </div>

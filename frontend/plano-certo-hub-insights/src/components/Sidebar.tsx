@@ -2,7 +2,8 @@
 import { 
   Utensils,
   Settings,
-  Activity
+  Activity,
+  Clock
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -17,17 +18,15 @@ export const Sidebar = ({ activeModule, onModuleChange }: SidebarProps) => {
     { id: 'menu-management', label: 'Gestão Menu', icon: Utensils },
     { id: 'ifood-api', label: 'API iFood', icon: Settings },
     { id: 'store-monitoring', label: 'Monitoramento', icon: Activity },
+    { id: 'opening-hours', label: 'Horários', icon: Clock },
   ];
 
   return (
-    <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
-      <div className="p-6 border-b border-gray-200">
+    <div className="w-64 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+      <div className="p-6 border-b border-gray-200 dark:border-gray-700">
         <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center shadow-lg">
-            <div className="text-white font-bold text-lg">PC</div>
-          </div>
           <div>
-            <h1 className="text-xl font-bold text-gray-900">
+            <h1 className="text-xl font-bold text-gray-900 dark:text-white">
               Plano Certo
             </h1>
             <p className="text-xs text-orange-500 font-semibold tracking-wide">
@@ -48,7 +47,7 @@ export const Sidebar = ({ activeModule, onModuleChange }: SidebarProps) => {
                 "w-full justify-start h-12 text-left",
                 activeModule === item.id 
                   ? "bg-orange-500 text-white hover:bg-orange-600" 
-                  : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                  : "text-muted-foreground hover:text-foreground hover:bg-accent"
               )}
               onClick={() => onModuleChange(item.id)}
             >

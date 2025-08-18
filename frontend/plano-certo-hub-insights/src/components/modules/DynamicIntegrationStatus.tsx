@@ -37,10 +37,10 @@ const DynamicIntegrationStatus = ({ onTokenGenerated }: DynamicIntegrationStatus
     
     try {
       console.log('🛍️ [STEP 1] Iniciando sincronização de produtos...');
-      console.log('🔗 [API CALL] URL: http://localhost:8081/products');
+      console.log('🔗 [API CALL] URL: http://localhost:8082/products');
       console.log('📤 [REQUEST] Payload:', { user_id: 'c1488646-aca8-4220-aacc-00e7ae3d6490' });
       
-      const response = await fetch('http://localhost:8081/products', {
+      const response = await fetch('http://localhost:8082/products', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -132,7 +132,7 @@ const DynamicIntegrationStatus = ({ onTokenGenerated }: DynamicIntegrationStatus
     return (
       <div className="flex items-center justify-center py-8">
         <Loader2 className="h-6 w-6 animate-spin" />
-        <span className="ml-2">Verificando status das integrações...</span>
+        <span className="ml-2 text-white">Verificando status das integrações...</span>
       </div>
     );
   }
@@ -142,7 +142,7 @@ const DynamicIntegrationStatus = ({ onTokenGenerated }: DynamicIntegrationStatus
       {/* Header com botão de atualizar */}
       <div className="flex items-center justify-between mb-4">
         <div>
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-white">
             Status atualizado automaticamente baseado em dados reais
           </p>
         </div>
@@ -158,7 +158,7 @@ const DynamicIntegrationStatus = ({ onTokenGenerated }: DynamicIntegrationStatus
           ) : (
             <RefreshCw className="h-4 w-4" />
           )}
-          <span>Atualizar Status</span>
+          <span className="text-white">Atualizar Status</span>
         </Button>
       </div>
 
@@ -170,10 +170,10 @@ const DynamicIntegrationStatus = ({ onTokenGenerated }: DynamicIntegrationStatus
                 {getStatusIcon(api.status)}
               </div>
               <div>
-                <h3 className="font-medium text-gray-900">{api.name}</h3>
-                <p className="text-sm text-gray-600">{api.description}</p>
+                <h3 className="font-medium text-white">{api.name}</h3>
+                <p className="text-sm text-white">{api.description}</p>
                 {api.lastSync && (
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-white mt-1">
                     Última sincronização: {api.lastSync}
                   </p>
                 )}
@@ -198,7 +198,7 @@ const DynamicIntegrationStatus = ({ onTokenGenerated }: DynamicIntegrationStatus
                   ) : (
                     <Package className="h-4 w-4" />
                   )}
-                  <span>Sincronizar Produtos</span>
+                  <span className="text-white">Sincronizar Produtos</span>
                 </Button>
               )}
               {getStatusBadge(api.status)}

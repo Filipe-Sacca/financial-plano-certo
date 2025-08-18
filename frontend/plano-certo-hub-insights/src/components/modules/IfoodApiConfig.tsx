@@ -41,7 +41,7 @@ import { useForm } from 'react-hook-form';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useIfoodConfig } from '@/hooks/useIfoodConfig';
 import { useIfoodMerchants } from '@/hooks/useIfoodMerchants';
-import { syncMerchants } from '@/services/ifoodMerchantsService';
+import { syncMerchants, getMerchantDetail, syncAllMerchants } from '@/services/ifoodMerchantsService';
 
 
 interface ApiConfig {
@@ -156,7 +156,7 @@ export const IfoodApiConfig = () => {
       });
       
       // Connect to local Node.js service only
-      const response = await fetch('http://localhost:8081/token', {
+      const response = await fetch('http://localhost:8082/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -370,10 +370,10 @@ const MerchantsCard = ({ user }: { user: any }) => {
               <Store className="h-6 w-6 text-blue-600" />
             </div>
             <div>
-              <p className="text-lg font-semibold text-gray-900">
+              <p className="text-lg font-semibold text-foreground">
                 Lojas iFood
               </p>
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-muted-foreground">
                 Sincronizar lojas via serviço local
               </p>
             </div>
@@ -396,10 +396,209 @@ const MerchantsCard = ({ user }: { user: any }) => {
   );
 };
 
+// Componente para sincronização individual de merchant
+const IndividualMerchantSync = ({ user }: { user: any }) => {
+  const [merchantId, setMerchantId] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [merchantDetail, setMerchantDetail] = useState<any>(null);
+
+  const handleSyncIndividual = async () => {
+    if (!user?.id) {
+      toast({
+        title: '❌ Erro',
+        description: 'Usuário não autenticado',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    if (!merchantId.trim()) {
+      toast({
+        title: '❌ Campo obrigatório',
+        description: 'Por favor, insira um Merchant ID válido',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    setMerchantDetail(null);
+
+    try {
+      console.log(`🔍 Fetching individual merchant: ${merchantId}`);
+      
+      const result = await getMerchantDetail(merchantId.trim(), user.id);
+      
+      if (result.success && result.merchant) {
+        setMerchantDetail({...result.merchant, action: result.action});
+        
+        if (result.action === 'found_in_db') {
+          toast({
+            title: '📦 Loja já existe!',
+            description: `A loja "${result.merchant.name}" já está sincronizada no banco de dados.`
+          });
+        } else if (result.action === 'added_from_api') {
+          toast({
+            title: '✅ Nova loja adicionada!',
+            description: `Loja "${result.merchant.name}" encontrada na API iFood e salva no banco de dados.`
+          });
+        } else {
+          toast({
+            title: '✅ Loja encontrada!',
+            description: `Detalhes da loja "${result.merchant.name}" carregados com sucesso.`
+          });
+        }
+      } else {
+        setMerchantDetail(null);
+        toast({
+          title: '❌ Erro ao buscar loja',
+          description: result.error || 'Não foi possível encontrar a loja com este ID.',
+          variant: 'destructive'
+        });
+      }
+    } catch (error: any) {
+      console.error('❌ Error fetching individual merchant:', error);
+      setMerchantDetail(null);
+      toast({
+        title: '❌ Erro',
+        description: error.message || 'Erro ao buscar detalhes da loja',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const clearSearch = () => {
+    setMerchantId('');
+    setMerchantDetail(null);
+  };
+
+  if (!user?.id) {
+    return null;
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center space-x-2">
+          <div className="p-2 bg-blue-100 rounded-lg">
+            <Store className="h-5 w-5 text-blue-600" />
+          </div>
+          <span>Sincronizar Loja Individual</span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          <div className="flex space-x-3">
+            <div className="flex-1">
+              <Label htmlFor="merchantId" className="text-sm font-medium text-foreground">
+                Merchant ID
+              </Label>
+              <Input
+                id="merchantId"
+                placeholder="Ex: 12345678-abcd-1234-efgh-123456789012"
+                value={merchantId}
+                onChange={(e) => setMerchantId(e.target.value)}
+                className="mt-1"
+                disabled={isLoading}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Insira o ID específico da loja que deseja sincronizar
+              </p>
+            </div>
+          </div>
+
+          <div className="flex space-x-2">
+            <Button
+              onClick={handleSyncIndividual}
+              disabled={isLoading || !merchantId.trim()}
+              className="flex items-center space-x-2"
+            >
+              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+              <span>{isLoading ? 'Buscando...' : 'Buscar Detalhes'}</span>
+            </Button>
+            
+            {(merchantId || merchantDetail) && (
+              <Button
+                variant="outline"
+                onClick={clearSearch}
+                disabled={isLoading}
+                className="flex items-center space-x-2"
+              >
+                <XCircle className="h-4 w-4" />
+                <span>Limpar</span>
+              </Button>
+            )}
+          </div>
+
+          {/* Display merchant details if found */}
+          {merchantDetail && (
+            <div className="mt-4 p-4 border border-green-200 bg-green-50 rounded-lg">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <CheckCircle className="h-5 w-5 text-green-600" />
+                    <h4 className="font-semibold text-green-900">
+                      {merchantDetail.name}
+                    </h4>
+                  </div>
+                  
+                  {merchantDetail.corporateName && merchantDetail.corporateName !== merchantDetail.name && (
+                    <p className="text-sm text-green-700 mb-2">
+                      <strong>Razão Social:</strong> {merchantDetail.corporateName}
+                    </p>
+                  )}
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <span className="font-medium text-green-800">ID:</span>
+                      <code className="ml-2 bg-green-100 px-2 py-1 rounded text-xs text-green-800">
+                        {merchantDetail.id}
+                      </code>
+                    </div>
+                    
+                    {merchantDetail.phone && (
+                      <div>
+                        <span className="font-medium text-green-800">Telefone:</span>
+                        <span className="ml-2 text-green-700">{merchantDetail.phone}</span>
+                      </div>
+                    )}
+                    
+                    {merchantDetail.address && (
+                      <div className="md:col-span-2">
+                        <span className="font-medium text-green-800">Endereço:</span>
+                        <span className="ml-2 text-green-700">
+                          {typeof merchantDetail.address === 'string' 
+                            ? merchantDetail.address 
+                            : `${merchantDetail.address.street || ''} ${merchantDetail.address.city || ''} ${merchantDetail.address.state || ''}`.trim()
+                          }
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="mt-3 text-xs text-green-600">
+                    <span>
+                      {merchantDetail.action === 'found_in_db' 
+                        ? '📦 Loja já existia no banco de dados (nenhuma ação necessária)'
+                        : '✅ Nova loja adicionada da API iFood e salva no banco de dados'
+                      }
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
 // Componente para exibir lojas sincronizadas
 const SyncedMerchantsCard = ({ user }: { user: any }) => {
   const { data: syncedMerchants, isLoading, error, refetch } = useIfoodMerchants(user?.id);
-  const [isCleaningDuplicates, setIsCleaningDuplicates] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const { data: ifoodConfig, refetch: refetchConfig } = useIfoodConfig(user?.id);
   const queryClient = useQueryClient();
@@ -454,51 +653,70 @@ const SyncedMerchantsCard = ({ user }: { user: any }) => {
     }
   };
 
-  const handleCleanupDuplicates = async () => {
-    setIsCleaningDuplicates(true);
-    try {
-      console.log('🧹 Iniciando limpeza manual de duplicatas...');
-      
-      const { IfoodMerchantsService } = await import('@/utils/ifoodMerchantsService');
-      const result = await IfoodMerchantsService.manualCleanupDuplicates(user.id);
-      
-      console.log('🧹 Resultado da limpeza:', result);
-      
-      if (result.success) {
-        // Invalidar queries para forçar atualização
-        queryClient.invalidateQueries({ queryKey: ['ifood-merchants'] });
-        await refetch(); // Forçar refetch imediato
-        
-        if (result.duplicatesFound === 0) {
-          toast({
-            title: '✅ Nenhuma Duplicata',
-            description: 'Não foram encontradas duplicatas para remover.',
-          });
-        } else {
-        toast({
-          title: '🧹 Limpeza Concluída',
-            description: `${result.duplicatesFound} duplicatas encontradas, ${result.duplicatesRemoved} removidas`,
-        });
-        }
-      } else {
-        console.error('❌ Erro na limpeza:', result.error);
-        toast({
-          title: '❌ Erro na Limpeza',
-          description: result.error || 'Erro ao limpar duplicatas',
-          variant: 'destructive'
-        });
-      }
-    } catch (error) {
-      console.error('❌ Erro ao limpar duplicatas:', error);
+  const handleSyncAllMerchants = async () => {
+    if (!user?.id) {
       toast({
         title: '❌ Erro',
-        description: error instanceof Error ? error.message : 'Erro ao limpar duplicatas',
+        description: 'Usuário não autenticado',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    setIsUpdating(true);
+    try {
+      console.log('🔄 [handleSyncAllMerchants] Sincronizando todas as lojas existentes...');
+      console.log('👤 Usuário:', user.id);
+      
+      // Usar a nova funcionalidade de sincronização em massa
+      const result = await syncAllMerchants(user.id);
+      
+      if (result.success) {
+        // Invalidar queries para forçar atualização da UI
+        queryClient.invalidateQueries({ queryKey: ['ifood-merchants'] });
+        await refetch(); // Força um refetch da lista atual
+        
+        const successCount = result.updated_merchants.length;
+        const failureCount = result.failed_merchants.length;
+        const totalProcessed = result.total_processed;
+        
+        if (totalProcessed === 0) {
+          toast({
+            title: '📭 Nenhuma loja encontrada',
+            description: 'Nenhuma loja foi encontrada para sincronizar.'
+          });
+        } else if (successCount > 0 || failureCount > 0) {
+          toast({
+            title: '✅ Sincronização Completa!',
+            description: `${totalProcessed} lojas processadas: ${successCount} atualizadas, ${failureCount} falharam`
+          });
+        } else {
+          toast({
+            title: '✅ Todas as lojas atualizadas',
+            description: `${totalProcessed} lojas verificadas - todas já estavam atualizadas`
+          });
+        }
+        
+        // Atualizar status das integrações após sincronização
+        setTimeout(() => {
+          globalRefreshStatus();
+        }, 1000);
+      } else {
+        throw new Error(result.error || 'Erro na sincronização em massa');
+      }
+      
+    } catch (error) {
+      console.error('❌ [handleSyncAllMerchants] Erro:', error);
+      toast({
+        title: '❌ Erro na Sincronização',
+        description: error instanceof Error ? error.message : 'Erro ao sincronizar lojas',
         variant: 'destructive'
       });
     } finally {
-      setIsCleaningDuplicates(false);
+      setIsUpdating(false);
     }
   };
+
 
   return (
     <Card>
@@ -512,22 +730,12 @@ const SyncedMerchantsCard = ({ user }: { user: any }) => {
             <Button
               variant="outline"
               size="sm"
-              onClick={handleCleanupDuplicates}
-              disabled={isCleaningDuplicates || isLoading}
-              className="flex items-center space-x-1"
-            >
-              <RefreshCw className={`h-3 w-3 ${isCleaningDuplicates ? 'animate-spin' : ''}`} />
-              <span>{isCleaningDuplicates ? 'Limpando...' : 'Limpar Duplicados'}</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleUpdateMerchants}
-              disabled={isLoading || isCleaningDuplicates || isUpdating}
+              onClick={handleSyncAllMerchants}
+              disabled={isLoading || isUpdating}
               className="flex items-center space-x-1"
             >
               <RefreshCw className={`h-3 w-3 ${isUpdating ? 'animate-spin' : ''}`} />
-              <span>{isUpdating ? 'Carregando...' : 'Recarregar'}</span>
+              <span>{isUpdating ? 'Sincronizando...' : 'Recarregar'}</span>
             </Button>
           </div>
         </CardTitle>
@@ -536,7 +744,7 @@ const SyncedMerchantsCard = ({ user }: { user: any }) => {
         {isLoading && (
           <div className="flex items-center justify-center py-8">
             <RefreshCw className="h-6 w-6 animate-spin text-gray-400" />
-            <span className="ml-2 text-gray-600">Carregando lojas...</span>
+            <span className="ml-2 text-muted-foreground">Carregando lojas...</span>
           </div>
         )}
 
@@ -551,8 +759,8 @@ const SyncedMerchantsCard = ({ user }: { user: any }) => {
           <CardContent className="p-6">
             <div className="text-center py-8">
               <Store className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-              <p className="text-gray-500 mb-2">Nenhuma loja encontrada</p>
-              <p className="text-sm text-gray-400">
+              <p className="text-muted-foreground mb-2">Nenhuma loja encontrada</p>
+              <p className="text-sm text-muted-foreground">
                 Clique em "Carregar Lojas" acima para sincronizar suas lojas do iFood via serviço local e visualizá-las aqui.
               </p>
             </div>
@@ -562,7 +770,7 @@ const SyncedMerchantsCard = ({ user }: { user: any }) => {
         {!isLoading && !error && syncedMerchants && syncedMerchants.length > 0 && (
           <div className="space-y-3">
             <div className="flex items-center justify-between mb-4">
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-muted-foreground">
                 <strong>{syncedMerchants.length}</strong> {syncedMerchants.length === 1 ? 'loja encontrada' : 'lojas encontradas'}
               </p>
               <Badge variant="secondary" className="bg-green-100 text-green-800">
@@ -578,7 +786,7 @@ const SyncedMerchantsCard = ({ user }: { user: any }) => {
                 >
                   <div className="flex-1">
                     <div className="flex items-center space-x-2 mb-1">
-                      <h4 className="font-medium text-gray-900 text-sm">
+                      <h4 className="font-medium text-foreground text-sm">
                         {merchant.name}
                       </h4>
                       
@@ -595,12 +803,12 @@ const SyncedMerchantsCard = ({ user }: { user: any }) => {
                     </div>
 
                     {merchant.corporate_name && merchant.corporate_name !== merchant.name && (
-                      <p className="text-xs text-gray-600 mb-1">
+                      <p className="text-xs text-muted-foreground mb-1">
                         {merchant.corporate_name}
                       </p>
                     )}
 
-                    <div className="flex items-center space-x-4 text-xs text-gray-500">
+                    <div className="flex items-center space-x-4 text-xs text-muted-foreground">
                       {merchant.address_city && merchant.address_state && (
                         <span className="flex items-center space-x-1">
                           <Globe className="h-3 w-3" />
@@ -617,15 +825,15 @@ const SyncedMerchantsCard = ({ user }: { user: any }) => {
                     </div>
 
                     <div className="flex items-center justify-between mt-2">
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs text-muted-foreground">
                         <span>ID: </span>
-                        <code className="bg-gray-100 px-1 rounded text-xs">
+                        <code className="bg-gray-100 px-1 rounded text-xs text-gray-800">
                           {merchant.merchant_id.slice(0, 8)}...
                         </code>
                       </div>
 
                       {merchant.last_sync_at && (
-                        <div className="text-xs text-gray-500">
+                        <div className="text-xs text-muted-foreground">
                           Sincronizado: {new Date(merchant.last_sync_at).toLocaleDateString('pt-BR', {
                             day: '2-digit',
                             month: '2-digit',
@@ -691,10 +899,10 @@ const SyncedMerchantsCard = ({ user }: { user: any }) => {
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">
+        <h1 className="text-3xl font-bold text-foreground mb-2">
           Configuração API iFood
         </h1>
-        <p className="text-gray-600">
+        <p className="text-muted-foreground">
           Configure suas credenciais de desenvolvedor para integração com o iFood
         </p>
       </div>
@@ -719,10 +927,10 @@ const SyncedMerchantsCard = ({ user }: { user: any }) => {
                     )}
                   </div>
                   <div>
-                    <p className="text-lg font-semibold text-gray-900">
+                    <p className="text-lg font-semibold text-foreground">
                       Status da Conexão
                     </p>
-                    <p className="text-sm text-gray-600">
+                    <p className="text-sm text-muted-foreground">
                       {isConnected ? 'Conectado ao iFood API' : 'Desconectado'}
                     </p>
                   </div>
@@ -753,6 +961,11 @@ const SyncedMerchantsCard = ({ user }: { user: any }) => {
                 ) : (
                   <MerchantsCard user={user} />
                 )}
+              </div>
+
+              {/* Individual Merchant Sync - NEW FUNCTIONALITY */}
+              <div className="w-full">
+                <IndividualMerchantSync user={user} />
               </div>
               
               <div className="mt-8">
@@ -879,9 +1092,9 @@ const SyncedMerchantsCard = ({ user }: { user: any }) => {
                         }`} />
                       </div>
                       <div>
-                        <h3 className="font-medium text-gray-900">{endpoint.name}</h3>
-                        <p className="text-sm text-gray-600">{endpoint.description}</p>
-                        <p className="text-xs text-gray-500 mt-1">{endpoint.endpoint}</p>
+                        <h3 className="font-medium text-foreground">{endpoint.name}</h3>
+                        <p className="text-sm text-muted-foreground">{endpoint.description}</p>
+                        <p className="text-xs text-muted-foreground mt-1">{endpoint.endpoint}</p>
                       </div>
                     </div>
                     <Badge className={
@@ -907,8 +1120,8 @@ const SyncedMerchantsCard = ({ user }: { user: any }) => {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="p-4 border border-gray-200 rounded-lg">
-                  <h3 className="font-medium text-gray-900 mb-2">Portal do Desenvolvedor</h3>
-                  <p className="text-sm text-gray-600 mb-3">
+                  <h3 className="font-medium text-foreground mb-2">Portal do Desenvolvedor</h3>
+                  <p className="text-sm text-muted-foreground mb-3">
                     Acesse o portal oficial do iFood para desenvolvedores
                   </p>
                   <Button variant="outline" size="sm" className="w-full">
@@ -918,8 +1131,8 @@ const SyncedMerchantsCard = ({ user }: { user: any }) => {
                 </div>
 
                 <div className="p-4 border border-gray-200 rounded-lg">
-                  <h3 className="font-medium text-gray-900 mb-2">Documentação da API</h3>
-                  <p className="text-sm text-gray-600 mb-3">
+                  <h3 className="font-medium text-foreground mb-2">Documentação da API</h3>
+                  <p className="text-sm text-muted-foreground mb-3">
                     Documentação completa da API do iFood
                   </p>
                   <Button variant="outline" size="sm" className="w-full">
@@ -929,8 +1142,8 @@ const SyncedMerchantsCard = ({ user }: { user: any }) => {
                 </div>
 
                 <div className="p-4 border border-gray-200 rounded-lg">
-                  <h3 className="font-medium text-gray-900 mb-2">Ambiente Sandbox</h3>
-                  <p className="text-sm text-gray-600 mb-3">
+                  <h3 className="font-medium text-foreground mb-2">Ambiente Sandbox</h3>
+                  <p className="text-sm text-muted-foreground mb-3">
                     Teste suas integrações em ambiente seguro
                   </p>
                   <Button variant="outline" size="sm" className="w-full">
@@ -940,8 +1153,8 @@ const SyncedMerchantsCard = ({ user }: { user: any }) => {
                 </div>
 
                 <div className="p-4 border border-gray-200 rounded-lg">
-                  <h3 className="font-medium text-gray-900 mb-2">Suporte Técnico</h3>
-                  <p className="text-sm text-gray-600 mb-3">
+                  <h3 className="font-medium text-foreground mb-2">Suporte Técnico</h3>
+                  <p className="text-sm text-muted-foreground mb-3">
                     Canal de suporte para desenvolvedores
                   </p>
                   <Button variant="outline" size="sm" className="w-full">
