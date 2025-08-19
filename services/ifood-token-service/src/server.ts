@@ -377,6 +377,30 @@ app.get('/merchant/check/:merchantId', async (req, res) => {
   }
 });
 
+// Debug endpoint para ver operating_hours
+app.get('/merchants/:merchantId/debug', async (req, res) => {
+  try {
+    const { merchantId } = req.params;
+    
+    // Usar a mesma instância do supabase que já existe
+    const merchantService = new IFoodMerchantService(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!);
+    
+    const { data, error } = await merchantService.supabase
+      .from('ifood_merchants')
+      .select('*')
+      .eq('merchant_id', merchantId)
+      .single();
+    
+    if (error) {
+      return res.status(404).json({ error: error.message });
+    }
+    
+    res.json({ success: true, data });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Individual merchant detail endpoint - Criterion 1.2
 app.get('/merchants/:merchantId', async (req, res) => {
   try {

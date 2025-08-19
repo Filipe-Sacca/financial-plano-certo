@@ -12,10 +12,16 @@ interface DynamicIntegrationStatusProps {
 }
 
 const DynamicIntegrationStatus = ({ onTokenGenerated }: DynamicIntegrationStatusProps) => {
+  console.log('🚀 [DYNAMIC INTEGRATION] Componente renderizado!');
+  
   const { user } = useAuth();
-  const { status, loading, refreshStatus } = useIfoodSyncStatus();
+  const { status, loading, peakHours, refreshStatus } = useIfoodSyncStatus();
   const { toast } = useToast();
   const [isSyncingProducts, setIsSyncingProducts] = useState(false);
+
+  console.log('🎯 [COMPONENT] peakHours recebido:', peakHours);
+  console.log('🎯 [COMPONENT] user:', user);
+  console.log('🎯 [COMPONENT] loading:', loading);
 
   const handleSyncProducts = async () => {
     console.log('🚀 [SYNC START] Função handleSyncProducts chamada');
@@ -161,6 +167,40 @@ const DynamicIntegrationStatus = ({ onTokenGenerated }: DynamicIntegrationStatus
           <span className="text-white">Atualizar Status</span>
         </Button>
       </div>
+
+      {/* Card de Horas de Pico */}
+      <Card className="mb-4">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-medium text-white">Horas de Pico Semanais</h3>
+              <p className="text-sm text-white opacity-75">
+                {peakHours.lunchHours > 0 || peakHours.dinnerHours > 0 
+                  ? "Baseado nos horários de funcionamento configurados" 
+                  : "Calculando baseado em horário padrão..."}
+              </p>
+            </div>
+            <div className="flex space-x-6">
+              <div className="text-center">
+                <div className="text-lg font-bold text-white">
+                  {peakHours.lunchHours}h
+                </div>
+                <div className="text-xs text-white opacity-75">
+                  Almoço (11h-15h)
+                </div>
+              </div>
+              <div className="text-center">
+                <div className="text-lg font-bold text-white">
+                  {peakHours.dinnerHours}h
+                </div>
+                <div className="text-xs text-white opacity-75">
+                  Janta (18h-23h)
+                </div>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {status.map((api) => (
         <Card key={api.name}>

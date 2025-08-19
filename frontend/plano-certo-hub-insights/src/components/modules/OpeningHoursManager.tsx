@@ -73,6 +73,9 @@ interface ScheduledPause {
 export default function OpeningHoursManager() {
   const { user } = useAuth();
   const [merchants, setMerchants] = useState<Merchant[]>([]);
+  const [realPeakHours, setRealPeakHours] = useState({ lunchHours: 0, dinnerHours: 0 });
+  
+  console.log('🍽️ [OPENING HOURS] Componente carregado!');
   const [selectedMerchant, setSelectedMerchant] = useState<Merchant | null>(null);
   const [scheduledPauses, setScheduledPauses] = useState<ScheduledPause[]>([]);
   const [loading, setLoading] = useState(true);
@@ -213,8 +216,115 @@ export default function OpeningHoursManager() {
     }
   };
 
+  const calculateRealPeakHours = async () => {
+    if (!user?.id) return;
+
+    try {
+      console.log('🔍 [OPENING HOURS] Buscando merchants para user_id:', user.id);
+      
+      // TESTE: Buscar TODOS os merchants primeiro para debug
+      const { data: allMerchantsTest, error: allError } = await supabase
+        .from('ifood_merchants')
+        .select('merchant_id, user_id, operating_hours');
+        
+      console.log('🔍 [DEBUG] TODOS OS MERCHANTS NO BANCO:', allMerchantsTest);
+      console.log('🔍 [DEBUG] Procurando por user_id:', user.id);
+      
+      // Buscar horários de funcionamento dos merchants
+      const { data: merchantsData, error: merchantsError } = await supabase
+        .from('ifood_merchants')
+        .select('merchant_id, operating_hours')
+        .eq('user_id', user.id);
+
+      console.log('📊 [OPENING HOURS] MERCHANTS DATA:', merchantsData);
+      console.log('❌ [OPENING HOURS] MERCHANTS ERROR:', merchantsError);
+
+      let totalLunchHours = 0;
+      let totalDinnerHours = 0;
+
+      if (!merchantsData || merchantsData.length === 0) {
+        console.log('⚠️ [OPENING HOURS] Nenhum merchant encontrado para user_id:', user.id);
+        console.log('🔍 [OPENING HOURS] Verificando todos os merchants...');
+        
+        // Debug: buscar todos os merchants
+        const { data: allMerchants } = await supabase
+          .from('ifood_merchants')
+          .select('merchant_id, user_id, operating_hours');
+          
+        console.log('🔍 [OPENING HOURS] TODOS OS MERCHANTS:', allMerchants);
+        
+        setRealPeakHours({ lunchHours: 0, dinnerHours: 0 });
+        return;
+      }
+
+      console.log('✅ [OPENING HOURS] Processando', merchantsData.length, 'merchants');
+      
+      // Calcular baseado nos horários reais
+      merchantsData.forEach(merchant => {
+        if (merchant.operating_hours && merchant.operating_hours.shifts) {
+          console.log('📅 [OPENING HOURS] Processando merchant:', merchant.merchant_id);
+          console.log('🕒 [OPENING HOURS] Shifts:', merchant.operating_hours.shifts);
+          
+          merchant.operating_hours.shifts.forEach((shift: any) => {
+            const from = parseTime(shift.start);
+            const durationHours = shift.duration / 60;
+            const to = from + durationHours;
+            
+            // Calcular overlap com horário de almoço (11h-15h)
+            const lunchStart = 11;
+            const lunchEnd = 15;
+            if (from < lunchEnd && to > lunchStart) {
+              const overlap = Math.min(lunchEnd, to) - Math.max(lunchStart, from);
+              totalLunchHours += Math.max(0, overlap);
+              console.log(`🍽️ [OPENING HOURS] LUNCH ${shift.dayOfWeek}: +${overlap}h`);
+            }
+            
+            // Calcular overlap com horário de janta (18h-23h)
+            const dinnerStart = 18;
+            const dinnerEnd = 23;
+            if (from < dinnerEnd && to > dinnerStart) {
+              const overlap = Math.min(dinnerEnd, to) - Math.max(dinnerStart, from);
+              totalDinnerHours += Math.max(0, overlap);
+              console.log(`🌙 [OPENING HOURS] DINNER ${shift.dayOfWeek}: +${overlap}h`);
+            }
+          });
+        } else {
+          console.log('⚠️ [OPENING HOURS] Merchant sem operating_hours:', merchant.merchant_id);
+        }
+      });
+
+      console.log(`📊 [OPENING HOURS] RESULT Almoço: ${totalLunchHours}h, Janta: ${totalDinnerHours}h`);
+      
+      setRealPeakHours({
+        lunchHours: Math.round(totalLunchHours),
+        dinnerHours: Math.round(totalDinnerHours)
+      });
+
+    } catch (error) {
+      console.error('❌ [OPENING HOURS] Erro ao calcular horas de pico:', error);
+      setRealPeakHours({ lunchHours: 0, dinnerHours: 0 });
+    }
+  };
+
+  const parseTime = (timeStr: string): number => {
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    return hours + (minutes / 60);
+  };
+
   useEffect(() => {
     fetchMerchants();
+    calculateRealPeakHours();
+    
+    // Iniciar polling visual no frontend para debug
+    const pollingInterval = setInterval(() => {
+      console.log('\n🔄 ================== FRONTEND POLLING CHECK ==================');
+      console.log('⏰ Timestamp:', new Date().toISOString());
+      console.log('🎯 Verificando se dados foram atualizados no banco...');
+      calculateRealPeakHours();
+      console.log('✅ ================== FRONTEND POLLING CHECK CONCLUÍDO ==================\n');
+    }, 10000); // A cada 10 segundos
+
+    return () => clearInterval(pollingInterval);
   }, [user?.id]);
 
   useEffect(() => {
@@ -225,9 +335,16 @@ export default function OpeningHoursManager() {
   const calculateWeeklyHours = () => {
     if (!selectedMerchant?.operating_hours?.shifts) return 0;
     
-    return selectedMerchant.operating_hours.shifts.reduce((total, shift) => {
+    const totalMinutes = selectedMerchant.operating_hours.shifts.reduce((total, shift) => {
+      console.log(`⏰ [WEEKLY CALC] ${shift.dayOfWeek}: ${shift.duration}min`);
       return total + shift.duration;
     }, 0);
+    
+    console.log(`⏰ [WEEKLY CALC] Total minutos: ${totalMinutes}`);
+    console.log(`⏰ [WEEKLY CALC] Total horas: ${totalMinutes / 60}`);
+    console.log(`⏰ [WEEKLY CALC] Arredondado: ${Math.round(totalMinutes / 60)}`);
+    
+    return totalMinutes;
   };
 
   // Calculate lunch hours (11:00-15:00 range)
@@ -432,7 +549,7 @@ export default function OpeningHoursManager() {
     try {
       setUpdating(true);
 
-      const response = await fetch(`http://localhost:8082/merchants/${selectedMerchant.merchant_id}/opening-hours`, {
+      const response = await fetch(`http://localhost:9000/merchants/${selectedMerchant.merchant_id}/opening-hours`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -532,9 +649,10 @@ export default function OpeningHoursManager() {
   }
 
   const currentShifts = selectedMerchant?.operating_hours?.shifts || [];
-  const weeklyHours = Math.floor(calculateWeeklyHours() / 60);
-  const lunchHours = calculateLunchHours();
-  const dinnerHours = calculateDinnerHours();
+  // Usando dados calculados localmente
+  const weeklyHours = Math.round(calculateWeeklyHours() / 60);
+  const lunchHours = realPeakHours.lunchHours;
+  const dinnerHours = realPeakHours.dinnerHours;
 
   return (
     <div className="space-y-6 animate-fade-in pb-6 pt-8">

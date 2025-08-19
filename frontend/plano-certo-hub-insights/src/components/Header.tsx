@@ -149,10 +149,10 @@ export const Header = ({
                <span className="text-white font-bold text-lg select-none" style={{ border: 'none', textDecoration: 'none', outline: 'none', boxShadow: 'none' }}>PC</span>
              </div>
             <div className="flex flex-col border-0 outline-0">
-              <h1 className="text-xl font-bold text-gray-900 leading-tight no-underline border-0 outline-0 decoration-0" style={{ textDecoration: 'none', border: 'none', borderBottom: 'none' }}>
+              <h1 className="text-xl font-bold text-gray-900 dark:text-white leading-tight no-underline border-0 outline-0 decoration-0" style={{ textDecoration: 'none', border: 'none', borderBottom: 'none' }}>
                 Plano Certo
               </h1>
-              <p className="text-xs text-orange-500 font-semibold tracking-wide leading-none no-underline border-0 outline-0 decoration-0">
+              <p className="text-xs text-orange-500 font-semibold tracking-wide leading-none no-underline border-0 outline-0 decoration-0" style={{ textDecoration: 'none', border: 'none', borderBottom: 'none' }}>
                 DELIVERY HUB
               </p>
             </div>

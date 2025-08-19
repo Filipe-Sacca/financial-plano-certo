@@ -119,17 +119,24 @@ export class IFoodMerchantStatusService {
     accessToken: string
   ): Promise<{ success: boolean; hours: OpeningHours[] }> {
     try {
-      const response = await axios.get(
-        this.IFOOD_HOURS_URL.replace('{merchantId}', merchantId),
-        {
-          headers: {
-            'accept': 'application/json',
-            'Authorization': `Bearer ${accessToken}`
-          }
-        }
-      );
+      const url = this.IFOOD_HOURS_URL.replace('{merchantId}', merchantId);
+      console.log(`🌐 [API REQUEST] GET ${url}`);
+      console.log(`🔑 [API REQUEST] Token: ${accessToken.substring(0, 20)}...`);
+      
+      const response = await axios.get(url, {
+        headers: {
+          'accept': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+          'User-Agent': 'iFood-Polling-Service/1.0.0'
+        },
+        timeout: 10000
+      });
 
       const data = response.data;
+      console.log(`📥 [API RESPONSE] Status: ${response.status}`);
+      console.log(`📊 [API RESPONSE] Data:`, JSON.stringify(data, null, 2));
       let hours: OpeningHours[] = [];
 
       // Extract shifts/periods from response
@@ -283,6 +290,9 @@ export class IFoodMerchantStatusService {
     shifts: OpeningHours[]
   ): Promise<boolean> {
     try {
+      console.log(`💾 [SAVE DB] Iniciando salvamento para merchant: ${merchantId}`);
+      console.log(`💾 [SAVE DB] Número de shifts: ${shifts.length}`);
+      
       // Create day mapping for quick access in future PUT operations
       const byDay: { [key: string]: string } = {};
       shifts.forEach(shift => {
@@ -297,17 +307,25 @@ export class IFoodMerchantStatusService {
         last_updated: new Date().toISOString()
       };
 
-      const { error } = await supabase
+      console.log(`💾 [SAVE DB] Dados a salvar no banco:`, JSON.stringify(operatingHours, null, 2));
+      console.log(`💾 [SAVE DB] Executando UPDATE WHERE merchant_id = ${merchantId}`);
+
+      const { data, error } = await supabase
         .from('ifood_merchants')
         .update({ operating_hours: operatingHours })
-        .eq('merchant_id', merchantId);
+        .eq('merchant_id', merchantId)
+        .select('merchant_id, user_id, operating_hours');
 
       if (error) {
-        console.error(`Failed to save opening hours for ${merchantId}: ${error.message}`);
+        console.error(`❌ [SAVE DB] Erro ao salvar: ${error.message}`);
+        console.error(`❌ [SAVE DB] Error details:`, error);
         return false;
       }
 
-      console.log(`✅ Saved opening hours for merchant ${merchantId}`);
+      console.log(`✅ [SAVE DB] Sucesso! Dados salvos para merchant ${merchantId}`);
+      console.log(`✅ [SAVE DB] Dados salvos:`, data);
+      console.log(`💾 [SAVE DB] Merchant user_id:`, data?.[0]?.user_id);
+      
       return true;
     } catch (error: any) {
       console.error(`Error saving opening hours: ${error.message}`);
@@ -328,30 +346,21 @@ export class IFoodMerchantStatusService {
     try {
       console.log(`🔄 Updating opening hours for ${merchantId} - ${dayOfWeek}: ${startTime} to ${endTime}`);
 
-      // 1. Get stored opening hours with IDs from database
+      // 1. Buscar horários existentes do banco de dados
       const { data: merchant, error: merchantError } = await supabase
         .from('ifood_merchants')
         .select('operating_hours')
         .eq('merchant_id', merchantId)
         .single();
 
-      if (merchantError || !merchant?.operating_hours?.by_day) {
+      if (merchantError || !merchant) {
         return {
           success: false,
-          message: 'Merchant not found or no opening hours data available. Run polling first.'
+          message: 'Merchant not found in database.'
         };
       }
 
-      // 2. Get the specific day ID
-      const dayId = merchant.operating_hours.by_day[dayOfWeek];
-      if (!dayId) {
-        return {
-          success: false,
-          message: `No ID found for ${dayOfWeek}. Available days: ${Object.keys(merchant.operating_hours.by_day).join(', ')}`
-        };
-      }
-
-      // 3. Calculate duration in minutes
+      // 2. Calculate duration in minutes
       const duration = this.calculateDuration(startTime, endTime);
       if (duration <= 0) {
         return {
@@ -360,21 +369,43 @@ export class IFoodMerchantStatusService {
         };
       }
 
-      // 4. Prepare PUT request body
+      // 3. Pegar horários existentes do banco
+      let existingShifts: any[] = [];
+      if (merchant.operating_hours && merchant.operating_hours.shifts) {
+        existingShifts = [...merchant.operating_hours.shifts];
+        console.log(`📋 Horários existentes no banco:`, existingShifts);
+      }
+
+      // 4. Verificar se já existe horário para este dia
+      const existingDayIndex = existingShifts.findIndex(shift => shift.dayOfWeek === dayOfWeek);
+      
+      if (existingDayIndex >= 0) {
+        // Atualizar horário existente
+        existingShifts[existingDayIndex] = {
+          dayOfWeek: dayOfWeek,
+          start: startTime,
+          duration: duration
+        };
+        console.log(`🔄 Atualizando horário existente para ${dayOfWeek}`);
+      } else {
+        // Adicionar novo horário
+        existingShifts.push({
+          dayOfWeek: dayOfWeek,
+          start: startTime,
+          duration: duration
+        });
+        console.log(`➕ Adicionando novo horário para ${dayOfWeek}`);
+      }
+
+      // 5. Preparar body com TODOS os horários (existentes + novo/atualizado)
       const putBody = {
-        shifts: [
-          {
-            id: dayId,
-            dayOfWeek: dayOfWeek,
-            start: startTime,
-            duration: duration
-          }
-        ]
+        storeId: merchantId,
+        shifts: existingShifts
       };
 
       console.log(`📤 PUT body:`, JSON.stringify(putBody, null, 2));
 
-      // 5. Make PUT request to iFood API
+      // 6. Make PUT request to iFood API
       const response = await axios.put(
         this.IFOOD_HOURS_URL.replace('{merchantId}', merchantId),
         putBody,
@@ -732,6 +763,11 @@ export class IFoodMerchantStatusService {
     errors: any[];
   }> {
     try {
+      console.log('\n🚀 ================== POLLING INICIADO ==================');
+      console.log('⏰ Timestamp:', new Date().toISOString());
+      console.log('🎯 Ação: Sincronizar dados iFood → Banco de dados');
+      console.log('🚀 ================== POLLING INICIADO ==================\n');
+      
       console.log('Starting merchant status check...');
 
       // Get all merchants
@@ -765,6 +801,9 @@ export class IFoodMerchantStatusService {
               const merchantId = merchant.merchant_id;
               const userId = merchant.user_id;
               const currentStatus = merchant.status;
+              
+              console.log(`🏪 [MERCHANT] Processing: ${merchantId}`);
+              console.log(`👤 [USER] userId: ${userId}`);
 
               // Skip if no merchant_id or user_id
               if (!merchantId || !userId) {
@@ -774,7 +813,11 @@ export class IFoodMerchantStatusService {
               results.checked++;
 
               // Get token for this merchant's user
+              console.log(`🔑 [TOKEN] Buscando token para userId: ${userId}`);
               const tokenData = await getTokenForUser(userId);
+              console.log(`🔑 [TOKEN] Token encontrado:`, !!tokenData);
+              console.log(`🔑 [TOKEN] Access token:`, tokenData?.access_token?.substring(0, 20) + '...');
+              
               if (!tokenData || !tokenData.access_token) {
                 console.warn(`No token found for merchant ${merchantId}`);
                 results.errors.push({
@@ -802,7 +845,11 @@ export class IFoodMerchantStatusService {
               }
 
               // Save opening hours to database
-              await this.saveOpeningHoursToDatabase(merchantId, hours);
+              console.log(`💾 [SAVE] Salvando ${hours.length} horários para merchant: ${merchantId}`);
+              console.log(`💾 [SAVE] Dados a salvar:`, JSON.stringify(hours, null, 2));
+              
+              const saveResult = await this.saveOpeningHoursToDatabase(merchantId, hours);
+              console.log(`💾 [SAVE] Resultado do salvamento:`, saveResult);
 
               // Calculate if within business hours
               const status = this.calculateIfOpen(hours);
@@ -857,6 +904,12 @@ export class IFoodMerchantStatusService {
         }
       }
 
+      console.log(`\n✅ ================== POLLING CONCLUÍDO ==================`);
+      console.log(`⏰ Timestamp: ${new Date().toISOString()}`);
+      console.log(`📊 Resultado: ${results.checked} verificados, ${results.updated} atualizados`);
+      console.log(`💾 Dados sincronizados no banco de dados`);
+      console.log(`✅ ================== POLLING CONCLUÍDO ==================\n`);
+      
       console.log(`Status check complete: ${results.checked} checked, ${results.updated} updated`);
       return results;
     } catch (error: any) {
@@ -883,8 +936,18 @@ export class IFoodMerchantStatusService {
     rule.minute = new schedule.Range(0, 59, intervalMinutes);
 
     schedule.scheduleJob(rule, async () => {
-      console.log(`Running scheduled status check at ${new Date().toISOString()}`);
+      const timestamp = new Date().toISOString();
+      console.log(`\n🔄 ============================================`);
+      console.log(`⏰ POLLING EXECUTADO: ${timestamp}`);
+      console.log(`🎯 Buscando dados do iFood e atualizando banco...`);
+      console.log(`🔄 ============================================\n`);
+      
       await this.checkAllMerchantStatuses();
+      
+      console.log(`\n✅ ============================================`);
+      console.log(`⏰ POLLING CONCLUÍDO: ${new Date().toISOString()}`);
+      console.log(`💾 Dados salvos no banco de dados`);
+      console.log(`✅ ============================================\n`);
     });
 
     console.log('Scheduler started successfully');
