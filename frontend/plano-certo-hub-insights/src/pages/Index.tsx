@@ -4,6 +4,7 @@ import { Sidebar } from '@/components/Sidebar';
 import { Header } from '@/components/Header';
 import { MenuManagement } from '@/components/modules/MenuManagement';
 import { IfoodApiConfig } from '@/components/modules/IfoodApiConfig';
+import IfoodOrdersManager from '@/components/modules/IfoodOrdersManager';
 import { StoreMonitoring } from '@/components/modules/StoreMonitoring';
 import OpeningHoursManager from '@/components/modules/OpeningHoursManager';
 import { DateRange } from 'react-day-picker';
@@ -95,6 +96,8 @@ export default function Index() {
         return <MenuManagement />;
       case 'ifood-api':
         return <IfoodApiConfig />;
+      case 'ifood-orders':
+        return <IfoodOrdersManager />;
       case 'store-monitoring':
         return <StoreMonitoring />;
       case 'opening-hours':

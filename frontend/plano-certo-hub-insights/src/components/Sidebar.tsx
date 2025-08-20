@@ -3,7 +3,8 @@ import {
   Utensils,
   Settings,
   Activity,
-  Clock
+  Clock,
+  ShoppingBag
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -17,6 +18,7 @@ export const Sidebar = ({ activeModule, onModuleChange }: SidebarProps) => {
   const menuItems = [
     { id: 'menu-management', label: 'Gestão Menu', icon: Utensils },
     { id: 'ifood-api', label: 'API iFood', icon: Settings },
+    { id: 'ifood-orders', label: 'Pedidos iFood', icon: ShoppingBag },
     { id: 'store-monitoring', label: 'Monitoramento', icon: Activity },
     { id: 'opening-hours', label: 'Horários', icon: Clock },
   ];
