@@ -10,13 +10,14 @@ import IFoodPollingService from './ifoodPollingService';
 import IFoodEventService from './ifoodEventService';
 import { ResourceMonitor, ApiResponseMonitor, EventDeduplicator, RateLimiter, pollingUtils } from './utils/pollingUtils';
 import { tokenScheduler } from './tokenScheduler';
+import { logCleanupScheduler } from './logCleanupScheduler';
 import { TokenRequest } from './types';
 
 // Load environment variables
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 8083;
+const PORT = process.env.PORT || 8085;
 
 // Middleware
 app.use(cors({
@@ -58,6 +59,7 @@ app.get('/', (req, res) => {
     endpoints: {
       health: 'GET /health',
       token: 'POST /token',
+      getUserToken: 'GET /token/user/:userId',
       refreshToken: 'POST /token/refresh',
       forceRefresh: 'POST /token/force-refresh/:clientId',
       updateAllExpired: 'POST /token/update-all-expired',
@@ -70,6 +72,7 @@ app.get('/', (req, res) => {
       merchantsRefresh: 'POST /merchants/refresh',
       merchantDetail: 'GET /merchants/:merchantId',
       products: 'POST /products',
+      createCategory: 'POST /merchants/:merchantId/categories',
       statusCheck: 'POST /merchant-status/check',
       singleStatus: 'GET /merchant-status/:merchantId',
       startScheduler: 'POST /merchant-status/start-scheduler',
@@ -147,6 +150,64 @@ app.post('/token', async (req, res) => {
 
   } catch (error: any) {
     console.error('❌ Server error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+});
+
+// Get token for user endpoint
+app.get('/token/user/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      return res.status(500).json({
+        success: false,
+        error: 'Missing Supabase configuration'
+      });
+    }
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'userId is required'
+      });
+    }
+
+    console.log(`🔍 Getting token for user: ${userId}`);
+
+    // Use getTokenForUser function that already exists
+    const tokenData = await getTokenForUser(userId);
+    
+    if (!tokenData || !tokenData.access_token) {
+      return res.status(404).json({
+        success: false,
+        error: 'Token not found for this user'
+      });
+    }
+
+    // Check if token is expired
+    const isExpired = new Date(tokenData.expires_at) < new Date();
+    if (isExpired) {
+      return res.status(401).json({
+        success: false,
+        error: 'Token has expired. Please refresh your token.'
+      });
+    }
+
+    res.json({
+      success: true,
+      access_token: tokenData.access_token,
+      expires_at: tokenData.expires_at,
+      client_id: tokenData.client_id
+    });
+
+  } catch (error: any) {
+    console.error('❌ Error getting user token:', error);
     res.status(500).json({
       success: false,
       error: 'Internal server error'
@@ -299,6 +360,181 @@ app.get('/token/scheduler/status', (req, res) => {
     });
   } catch (error: any) {
     console.error('❌ Error getting scheduler status:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// ====================================================================
+// LOG CLEANUP SCHEDULER ENDPOINTS
+// ====================================================================
+
+// Start log cleanup scheduler
+app.post('/logs/cleanup/scheduler/start', (req, res) => {
+  try {
+    console.log('🧹 Starting log cleanup scheduler...');
+    logCleanupScheduler.start();
+    
+    res.json({
+      success: true,
+      message: 'Log cleanup scheduler started successfully',
+      status: logCleanupScheduler.getStatus()
+    });
+  } catch (error: any) {
+    console.error('❌ Error starting log cleanup scheduler:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Stop log cleanup scheduler
+app.post('/logs/cleanup/scheduler/stop', (req, res) => {
+  try {
+    logCleanupScheduler.stop();
+    
+    res.json({
+      success: true,
+      message: 'Log cleanup scheduler stopped',
+      status: logCleanupScheduler.getStatus()
+    });
+  } catch (error: any) {
+    console.error('❌ Error stopping log cleanup scheduler:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Get log cleanup scheduler status
+app.get('/logs/cleanup/scheduler/status', (req, res) => {
+  try {
+    const status = logCleanupScheduler.getStatus();
+    
+    res.json({
+      success: true,
+      scheduler: 'Log Cleanup Service',
+      ...status
+    });
+  } catch (error: any) {
+    console.error('❌ Error getting log cleanup scheduler status:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Manual log cleanup execution (for testing)
+app.post('/logs/cleanup/execute', async (req, res) => {
+  try {
+    console.log('🧹 Manual log cleanup execution requested...');
+    const result = await logCleanupScheduler.executeCleanup();
+    
+    const statusCode = result.success ? 200 : 500;
+    res.status(statusCode).json(result);
+  } catch (error: any) {
+    console.error('❌ Error executing manual log cleanup:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Alternative log cleanup using raw SQL (WORKING VERSION)
+app.post('/logs/cleanup/execute-sql', async (req, res) => {
+  try {
+    console.log('🧹 SQL-based log cleanup execution requested...');
+    
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      return res.status(500).json({
+        success: false,
+        error: 'Missing Supabase configuration'
+      });
+    }
+
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    console.log('📊 Checking current log count...');
+    
+    // Get count before deletion
+    const { count: beforeCount, error: countError } = await supabase
+      .from('ifood_polling_log')
+      .select('*', { count: 'exact', head: true });
+
+    if (countError) {
+      console.error('❌ Error counting logs:', countError.message);
+      return res.status(500).json({
+        success: false,
+        error: `Error counting logs: ${countError.message}`
+      });
+    }
+
+    console.log(`📊 Found ${beforeCount || 0} logs to delete`);
+
+    // Use raw SQL to delete all records
+    const { data, error: sqlError } = await supabase.rpc('exec_sql', { 
+      query: 'DELETE FROM ifood_polling_log;'
+    });
+
+    // If exec_sql RPC doesn't exist, try alternative approaches
+    if (sqlError && sqlError.message.includes('function exec_sql')) {
+      console.log('🔄 RPC exec_sql not available, trying alternative method...');
+      
+      // Alternative: Create a custom function or use batch deletion by timestamp
+      const now = new Date();
+      const { error: deleteError } = await supabase
+        .from('ifood_polling_log')
+        .delete()
+        .lte('created_at', now.toISOString());
+      
+      if (deleteError) {
+        console.error('❌ Alternative deletion failed:', deleteError.message);
+        return res.status(500).json({
+          success: false,
+          error: `All deletion methods failed: ${deleteError.message}`
+        });
+      }
+    } else if (sqlError) {
+      console.error('❌ SQL deletion failed:', sqlError.message);
+      return res.status(500).json({
+        success: false,
+        error: `SQL deletion failed: ${sqlError.message}`
+      });
+    }
+
+    // Verify deletion
+    const { count: afterCount } = await supabase
+      .from('ifood_polling_log')
+      .select('*', { count: 'exact', head: true });
+
+    const actualDeleted = (beforeCount || 0) - (afterCount || 0);
+
+    console.log('✅ SQL-based log cleanup completed successfully');
+    console.log(`📊 Deleted ${actualDeleted} logs`);
+
+    res.json({
+      success: true,
+      method: 'sql-based',
+      data: {
+        logs_before: beforeCount || 0,
+        logs_deleted: actualDeleted,
+        logs_remaining: afterCount || 0,
+        cleanup_time: new Date().toISOString()
+      }
+    });
+
+  } catch (error: any) {
+    console.error('❌ Error in SQL log cleanup:', error);
     res.status(500).json({
       success: false,
       error: error.message
@@ -1003,6 +1239,241 @@ app.post('/products', async (req, res) => {
   }
 });
 
+// Create category endpoint - iFood Catalog Management
+app.post('/merchants/:merchantId/categories', async (req, res) => {
+  try {
+    const { merchantId } = req.params;
+    const { user_id, name, externalCode, status, index, template } = req.body;
+
+    // Extract token from Authorization header if provided
+    const authHeader = req.headers.authorization;
+    let accessToken: string | undefined;
+    
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      accessToken = authHeader.substring(7); // Remove 'Bearer ' prefix
+      console.log('🔐 [CREATE CATEGORY] Token encontrado no header Authorization');
+    } else {
+      console.log('🔍 [CREATE CATEGORY] Nenhum token no header, será buscado no banco de dados');
+    }
+
+    // Validate required parameters
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'user_id is required'
+      });
+    }
+
+    if (!merchantId) {
+      return res.status(400).json({
+        success: false,
+        error: 'merchantId is required'
+      });
+    }
+
+    if (!name) {
+      return res.status(400).json({
+        success: false,
+        error: 'Category name is required'
+      });
+    }
+
+    // Validate environment variables
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      return res.status(500).json({
+        success: false,
+        error: 'Missing Supabase configuration'
+      });
+    }
+
+    console.log(`🏪 [CREATE CATEGORY] Creating category for merchant: ${merchantId}`);
+    console.log(`📝 [CREATE CATEGORY] Category data:`, { name, externalCode, status, index, template });
+
+    // Initialize product service
+    const productService = new IFoodProductService(supabaseUrl, supabaseKey);
+
+    // Prepare category data with defaults
+    const categoryData = {
+      name,
+      externalCode: externalCode || `EXT_${Date.now()}`, // Generate if not provided
+      status: (status as 'AVAILABLE' | 'UNAVAILABLE') || 'AVAILABLE',
+      index: typeof index === 'number' ? index : 0,
+      template: (template as 'DEFAULT' | 'PIZZA' | 'COMBO') || 'DEFAULT'
+    };
+
+    // Create category - pass token if provided
+    const result = await productService.createCategory(user_id, merchantId, categoryData, accessToken);
+
+    if (result.success) {
+      console.log(`✅ [CREATE CATEGORY] Category created successfully:`, result.data);
+      return res.json({
+        success: true,
+        message: 'Category created successfully',
+        data: result.data,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      console.error(`❌ [CREATE CATEGORY] Failed to create category:`, result.error);
+      return res.status(400).json({
+        success: false,
+        error: result.error,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+  } catch (error: any) {
+    console.error('❌ [CREATE CATEGORY] Server error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error',
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// List categories endpoint - iFood Catalog Management
+app.get('/merchants/:merchantId/categories', async (req, res) => {
+  try {
+    const { merchantId } = req.params;
+    const { user_id } = req.query;
+
+    // Validate required parameters
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'user_id is required as query parameter'
+      });
+    }
+
+    if (!merchantId) {
+      return res.status(400).json({
+        success: false,
+        error: 'merchantId is required'
+      });
+    }
+
+    // Validate environment variables
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      return res.status(500).json({
+        success: false,
+        error: 'Missing Supabase configuration'
+      });
+    }
+
+    console.log(`📋 [LIST CATEGORIES] Fetching categories for merchant: ${merchantId}, user: ${user_id}`);
+
+    // Create Supabase client
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Get categories from database
+    const { data: categories, error } = await supabase
+      .from('ifood_categories')
+      .select('*')
+      .eq('merchant_id', merchantId)
+      .eq('user_id', user_id)
+      .order('index', { ascending: true });
+
+    if (error) {
+      console.error('❌ [LIST CATEGORIES] Database error:', error);
+      return res.status(500).json({
+        success: false,
+        error: `Database error: ${error.message}`,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    console.log(`✅ [LIST CATEGORIES] Found ${categories?.length || 0} categories`);
+
+    return res.json({
+      success: true,
+      data: categories || [],
+      count: categories?.length || 0,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error: any) {
+    console.error('❌ [LIST CATEGORIES] Server error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error',
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Sync categories endpoint - iFood Catalog Management
+app.post('/merchants/:merchantId/categories/sync', async (req, res) => {
+  try {
+    const { merchantId } = req.params;
+    const { user_id } = req.body;
+
+    // Validate required parameters
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'user_id is required'
+      });
+    }
+
+    if (!merchantId) {
+      return res.status(400).json({
+        success: false,
+        error: 'merchantId is required'
+      });
+    }
+
+    // Validate environment variables
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      return res.status(500).json({
+        success: false,
+        error: 'Missing Supabase configuration'
+      });
+    }
+
+    console.log(`🔄 [SYNC CATEGORIES] Starting sync for merchant: ${merchantId}, user: ${user_id}`);
+
+    // Initialize product service
+    const productService = new IFoodProductService(supabaseUrl, supabaseKey);
+
+    // Sync categories
+    const result = await productService.syncCategories(user_id, merchantId);
+
+    if (result.success) {
+      console.log(`✅ [SYNC CATEGORIES] Sync completed successfully:`, result.data);
+      return res.json({
+        success: true,
+        message: 'Categories synchronized successfully',
+        data: result.data,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      console.error(`❌ [SYNC CATEGORIES] Sync failed:`, result.error);
+      return res.status(400).json({
+        success: false,
+        error: result.error,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+  } catch (error: any) {
+    console.error('❌ [SYNC CATEGORIES] Server error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error',
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // ====================================================================
 // iFood Orders Module Endpoints - PHASE 1 Implementation
 // ====================================================================
@@ -1312,6 +1783,67 @@ app.get('/orders/metrics/:userId', async (req, res) => {
       success: false,
       error: 'Failed to fetch performance metrics',
       message: error.message
+    });
+  }
+});
+
+// Delete test orders (cleanup endpoint)
+app.delete('/orders/cleanup/test-data', async (req, res) => {
+  try {
+    const { userId } = req.body;
+    
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'userId is required'
+      });
+    }
+
+    console.log(`🧹 [CLEANUP] Deleting test orders for user: ${userId}`);
+    
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_ANON_KEY;
+    
+    if (!supabaseUrl || !supabaseKey) {
+      return res.status(500).json({
+        success: false,
+        error: 'Missing Supabase configuration'
+      });
+    }
+
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Delete test orders (orders that start with 'test-' or have test customer names)
+    const { data: deletedOrders, error } = await supabase
+      .from('ifood_orders')
+      .delete()
+      .eq('user_id', userId)
+      .or('ifood_order_id.like.test-%,customer_name.in.(Cliente Teste,Pedro Costa,João Silva,Maria Santos)')
+      .select();
+
+    if (error) {
+      console.error('❌ [CLEANUP] Error deleting test orders:', error);
+      return res.status(500).json({
+        success: false,
+        error: `Database error: ${error.message}`
+      });
+    }
+
+    const deletedCount = deletedOrders?.length || 0;
+    console.log(`✅ [CLEANUP] Deleted ${deletedCount} test orders`);
+
+    res.json({
+      success: true,
+      message: `Deleted ${deletedCount} test orders`,
+      deletedOrders: deletedOrders || [],
+      timestamp: new Date().toISOString()
+    });
+  } catch (error: any) {
+    console.error('❌ [CLEANUP] Error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
     });
   }
 });
@@ -1706,6 +2238,19 @@ app.listen(PORT, () => {
     tokenScheduler.start(SCHEDULER_INTERVAL);
   }
 
+  // Auto-start log cleanup scheduler
+  const AUTO_START_LOG_CLEANUP = process.env.AUTO_START_LOG_CLEANUP !== 'false';
+  
+  if (AUTO_START_LOG_CLEANUP) {
+    console.log('🧹 Auto-starting log cleanup scheduler...');
+    try {
+      logCleanupScheduler.start();
+      console.log('✅ Log cleanup scheduler started successfully');
+    } catch (error: any) {
+      console.error('❌ Failed to start log cleanup scheduler:', error.message);
+    }
+  }
+
   console.log('🚀 ===================================');
   console.log(`🍔 iFood Token Service Started`);
   console.log(`📡 Server running on port ${PORT}`);
@@ -1727,6 +2272,12 @@ app.listen(PORT, () => {
   console.log(`🔄 Token scheduler: POST http://localhost:${PORT}/token/scheduler/start`);
   console.log(`🛑 Stop scheduler: POST http://localhost:${PORT}/token/scheduler/stop`);
   console.log(`📊 Scheduler status: GET http://localhost:${PORT}/token/scheduler/status`);
+  console.log('🧹 ===================================');
+  console.log('🗑️ Log Cleanup Scheduler Endpoints:');
+  console.log(`🚀 Start log cleanup: POST http://localhost:${PORT}/logs/cleanup/scheduler/start`);
+  console.log(`🛑 Stop log cleanup: POST http://localhost:${PORT}/logs/cleanup/scheduler/stop`);
+  console.log(`📊 Cleanup status: GET http://localhost:${PORT}/logs/cleanup/scheduler/status`);
+  console.log(`🧹 Manual cleanup: POST http://localhost:${PORT}/logs/cleanup/execute`);
   console.log('🚀 ===================================');
   console.log('📦 iFood Orders Module Endpoints:');
   console.log(`💚 Orders health: GET http://localhost:${PORT}/orders/health`);

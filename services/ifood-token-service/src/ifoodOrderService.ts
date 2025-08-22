@@ -466,10 +466,10 @@ export class IFoodOrderService {
         customer_phone: orderData.customer?.phone,
         customer_address: orderData.customer?.address,
         
-        // Extract financial information
-        total_amount: orderData.total?.total,
-        delivery_fee: orderData.total?.deliveryFee,
-        payment_method: orderData.payments?.[0]?.method
+        // Extract financial information (support multiple data structures)
+        total_amount: orderData.total?.total || orderData.total || orderData.totalPrice || null,
+        delivery_fee: orderData.total?.deliveryFee || orderData.deliveryFee || null,
+        payment_method: orderData.payments?.[0]?.method || orderData.paymentMethod || null
       };
 
       // Store order in database

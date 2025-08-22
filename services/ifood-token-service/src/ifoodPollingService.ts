@@ -442,6 +442,7 @@ export class IFoodPollingService {
       }
 
       console.log(`💾 [POLLING-SERVICE] Storing ${events.length} events...`);
+      console.log(`🔍 [DEBUG] Sample event:`, JSON.stringify(events[0], null, 2));
 
       // SIMPLIFIED: Map iFood events to database format
       const eventEntities = events.map(event => ({
@@ -460,6 +461,8 @@ export class IFoodPollingService {
         processing_attempts: 0
       }));
 
+      console.log(`🔍 [DEBUG] Event entities to insert:`, JSON.stringify(eventEntities, null, 2));
+
       // Insert events (handle duplicates gracefully)
       const { data, error } = await this.supabase
         .from('ifood_events')
@@ -471,33 +474,33 @@ export class IFoodPollingService {
 
       if (error) {
         console.error('❌ [POLLING-SERVICE] Error storing events:', error);
+        console.error('❌ [POLLING-SERVICE] Error details:', JSON.stringify(error, null, 2));
         return 0;
       }
 
       const storedCount = data?.length || 0;
       console.log(`✅ [POLLING-SERVICE] Stored ${storedCount} events successfully`);
 
-      // STEP 4 & 5: PARALLEL PROCESSING for maximum performance
+      // STEP 4: IMMEDIATE SEQUENTIAL PROCESSING - Process events IMMEDIATELY after saving
       if (storedCount > 0) {
         const eventIds = events.map(e => e.id);
         
-        // PERFORMANCE: Execute virtual bag processing and acknowledgment in parallel
-        const [virtualBagResult, acknowledgmentResult] = await Promise.allSettled([
-          this.processOrderEvents(uniqueEvents, userId),
-          this.acknowledgeStoredEvents(eventIds, userId, pollingId)
-        ]);
-
-        // Log results
-        if (virtualBagResult.status === 'fulfilled') {
-          console.log(`✅ [PARALLEL] Virtual bag processing completed`);
-        } else {
-          console.error(`❌ [PARALLEL] Virtual bag processing failed:`, virtualBagResult.reason);
+        // IMMEDIATE: Process order events first (blocking)
+        try {
+          console.log(`🔄 [IMMEDIATE] Processing ${events.length} events IMMEDIATELY after saving...`);
+          await this.processOrderEvents(events, userId);
+          console.log(`✅ [IMMEDIATE] Order events processed successfully`);
+        } catch (error: any) {
+          console.error(`❌ [IMMEDIATE] Order processing failed:`, error);
         }
 
-        if (acknowledgmentResult.status === 'fulfilled') {
-          console.log(`✅ [PARALLEL] Acknowledgment completed`);
-        } else {
-          console.error(`❌ [PARALLEL] Acknowledgment failed:`, acknowledgmentResult.reason);
+        // STEP 5: Acknowledge after processing (sequential)
+        try {
+          console.log(`✅ [IMMEDIATE] Acknowledging ${eventIds.length} events after processing...`);
+          await this.acknowledgeStoredEvents(eventIds, userId, pollingId);
+          console.log(`✅ [IMMEDIATE] Events acknowledged successfully`);
+        } catch (error: any) {
+          console.error(`❌ [IMMEDIATE] Acknowledgment failed:`, error);
         }
       }
       
@@ -522,27 +525,36 @@ export class IFoodPollingService {
         return;
       }
 
-      // Process only order events (PLC, CFM, etc.)
-      const orderEvents = events.filter(event => 
-        ['PLC', 'CFM', 'SPS', 'SPE'].includes(event.code)
+      // Process PLACED events (PLC) - create new orders
+      const placedOrderEvents = events.filter(event => event.code === 'PLC');
+      
+      // Process STATUS UPDATE events (CFM, CAN, etc.) - update existing orders
+      const statusUpdateEvents = events.filter(event => 
+        ['CFM', 'CAN', 'SPS', 'SPE', 'RTP', 'DSP', 'CON'].includes(event.code)
       );
 
-      console.log(`📋 [VIRTUAL-BAG] Found ${orderEvents.length} order events to process`);
+      console.log(`📋 [VIRTUAL-BAG] Found ${placedOrderEvents.length} PLACED events to create as new orders`);
+      console.log(`🔄 [VIRTUAL-BAG] Found ${statusUpdateEvents.length} STATUS UPDATE events to update existing orders`);
 
-      // PERFORMANCE: Process events in parallel batches (max 3 concurrent)
+      if (placedOrderEvents.length === 0 && statusUpdateEvents.length === 0) {
+        console.log(`📭 [VIRTUAL-BAG] No events to process`);
+        return;
+      }
+
+      // PERFORMANCE: Process PLACED events in parallel batches (max 3 concurrent)
       const batchSize = 3;
       const batches = [];
       
-      for (let i = 0; i < orderEvents.length; i += batchSize) {
-        const batch = orderEvents.slice(i, i + batchSize);
+      for (let i = 0; i < placedOrderEvents.length; i += batchSize) {
+        const batch = placedOrderEvents.slice(i, i + batchSize);
         batches.push(batch);
       }
 
-      console.log(`🔄 [VIRTUAL-BAG] Processing ${batches.length} batches of events (${batchSize} per batch)`);
+      console.log(`🔄 [VIRTUAL-BAG] Processing ${batches.length} batches of PLACED events (${batchSize} per batch)`);
 
       for (const batch of batches) {
-        // Process batch in parallel
-        const batchPromises = batch.map(event => this.processSingleOrderEvent(event, tokenData.access_token, userId));
+        // Process batch in parallel - save directly to ifood_orders
+        const batchPromises = batch.map(event => this.saveOrderFromPlacedEvent(event, tokenData.access_token, userId));
         
         const batchResults = await Promise.allSettled(batchPromises);
         
@@ -550,7 +562,20 @@ export class IFoodPollingService {
         const successful = batchResults.filter(r => r.status === 'fulfilled').length;
         const failed = batchResults.filter(r => r.status === 'rejected').length;
         
-        console.log(`📊 [VIRTUAL-BAG] Batch completed: ${successful} success, ${failed} failed`);
+        console.log(`📊 [VIRTUAL-BAG] PLACED events batch completed: ${successful} orders saved, ${failed} failed`);
+      }
+
+      // Process STATUS UPDATE events
+      if (statusUpdateEvents.length > 0) {
+        console.log(`🔄 [STATUS-UPDATE] Processing ${statusUpdateEvents.length} status update events...`);
+        
+        for (const event of statusUpdateEvents) {
+          try {
+            await this.updateOrderStatusFromEvent(event, userId);
+          } catch (error: any) {
+            console.error(`❌ [STATUS-UPDATE] Failed to update order ${event.orderId}:`, error.message);
+          }
+        }
       }
     } catch (error: any) {
       console.error('❌ [VIRTUAL-BAG] Error in virtual bag processing:', error);
@@ -558,7 +583,162 @@ export class IFoodPollingService {
   }
 
   /**
+   * Save order from PLACED event directly to ifood_orders table
+   */
+  private async saveOrderFromPlacedEvent(event: any, accessToken: string, userId: string): Promise<void> {
+    try {
+      console.log(`📦 [ORDER-SAVE] Processing PLACED order: ${event.orderId} (${event.code})`);
+
+      // Get complete order data from virtual bag API
+      let orderData = null;
+      
+      try {
+        console.log(`🔍 [ORDER-SAVE] Fetching order data via virtual bag: ${event.orderId}`);
+        const virtualBagResponse = await this.optimizedAxios.get(
+          `https://merchant-api.ifood.com.br/order/v1.0/orders/${event.orderId}/virtual-bag`,
+          {
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${accessToken}`
+            }
+          }
+        );
+
+        if (virtualBagResponse.status === 200) {
+          orderData = virtualBagResponse.data;
+          console.log(`✅ [ORDER-SAVE] Virtual bag data retrieved for order: ${event.orderId}`);
+        }
+      } catch (virtualBagError: any) {
+        console.log(`🔄 [ORDER-SAVE] Virtual bag failed, trying standard order endpoint for ${event.orderId}`);
+        
+        // Fallback to standard order endpoint
+        try {
+          const orderResponse = await this.optimizedAxios.get(
+            `https://merchant-api.ifood.com.br/order/v1.0/orders/${event.orderId}`,
+            {
+              headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${accessToken}`
+              }
+            }
+          );
+
+          if (orderResponse.status === 200) {
+            orderData = orderResponse.data;
+            console.log(`✅ [ORDER-SAVE] Standard order data retrieved for order: ${event.orderId}`);
+          }
+        } catch (orderError: any) {
+          console.error(`❌ [ORDER-SAVE] Failed to get order data for ${event.orderId}:`, orderError.message);
+          
+          // Save minimal order with event data only
+          orderData = {
+            id: event.orderId,
+            createdAt: event.createdAt,
+            salesChannel: event.salesChannel,
+            merchant: { id: event.merchantId }
+          };
+          console.log(`📝 [ORDER-SAVE] Using minimal event data for order: ${event.orderId}`);
+        }
+      }
+
+      // Create order entity for ifood_orders table
+      const orderEntity = {
+        ifood_order_id: event.orderId,
+        merchant_id: event.merchantId,
+        user_id: userId,
+        status: 'PENDING', // All PLACED orders start as PENDING
+        order_data: orderData,
+        virtual_bag_data: orderData,
+        
+        // Extract customer info if available
+        customer_name: orderData?.customer?.name || orderData?.deliveryAddress?.formattedAddress || null,
+        customer_phone: orderData?.customer?.phoneNumber || orderData?.customer?.phone || null,
+        customer_address: orderData?.deliveryAddress || orderData?.customer?.address || null,
+        
+        // Extract financial info if available  
+        total_amount: orderData?.total?.orderAmount || orderData?.totalPrice || null,
+        delivery_fee: orderData?.total?.deliveryFee || orderData?.deliveryFee || null,
+        payment_method: orderData?.payments?.[0]?.method || orderData?.paymentMethod || null,
+        
+        created_at: new Date(event.createdAt || new Date()).toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      console.log(`💾 [ORDER-SAVE] Saving order to ifood_orders table:`, {
+        ifood_order_id: orderEntity.ifood_order_id,
+        merchant_id: orderEntity.merchant_id,
+        status: orderEntity.status,
+        customer_name: orderEntity.customer_name,
+        total_amount: orderEntity.total_amount
+      });
+
+      // Insert order into ifood_orders table
+      const { data, error } = await this.supabase
+        .from('ifood_orders')
+        .upsert(orderEntity, {
+          onConflict: 'ifood_order_id',
+          ignoreDuplicates: false // Update if exists
+        })
+        .select('id');
+
+      if (error) {
+        console.error(`❌ [ORDER-SAVE] Error saving order ${event.orderId} to ifood_orders:`, error);
+        throw error;
+      } else {
+        const savedOrderId = data?.[0]?.id;
+        console.log(`✅ [ORDER-SAVE] Order ${event.orderId} saved to ifood_orders table with ID: ${savedOrderId}`);
+      }
+
+    } catch (error: any) {
+      console.error(`❌ [ORDER-SAVE] Error processing PLACED event ${event.orderId}:`, error.message);
+      throw error; // Re-throw for Promise.allSettled tracking
+    }
+  }
+
+  /**
+   * Update order status from status change event
+   */
+  private async updateOrderStatusFromEvent(event: any, userId: string): Promise<void> {
+    try {
+      console.log(`🔄 [STATUS-UPDATE] Updating order ${event.orderId} status to ${event.code}`);
+
+      const newStatus = this.mapEventCodeToOrderStatus(event.code);
+      
+      // Update order status in database
+      const { error } = await this.supabase
+        .from('ifood_orders')
+        .update({
+          status: newStatus,
+          updated_at: new Date().toISOString(),
+          // Add status-specific timestamps
+          ...(newStatus === 'CONFIRMED' && { confirmed_at: new Date().toISOString() }),
+          ...(newStatus === 'DELIVERED' && { delivered_at: new Date().toISOString() }),
+          ...(newStatus === 'CANCELLED' && { 
+            cancelled_at: new Date().toISOString(),
+            cancelled_by: 'IFOOD_EVENT'
+          })
+        })
+        .eq('ifood_order_id', event.orderId)
+        .eq('user_id', userId);
+
+      if (error) {
+        console.error(`❌ [STATUS-UPDATE] Error updating order ${event.orderId}:`, error);
+        throw error;
+      }
+
+      console.log(`✅ [STATUS-UPDATE] Order ${event.orderId} updated to status ${newStatus}`);
+
+    } catch (error: any) {
+      console.error(`❌ [STATUS-UPDATE] Error updating order ${event.orderId}:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Process a single order event (extracted for parallel processing)
+   * DEPRECATED: Replaced by saveOrderFromPlacedEvent for better organization
    */
   private async processSingleOrderEvent(event: any, accessToken: string, userId: string): Promise<void> {
     try {

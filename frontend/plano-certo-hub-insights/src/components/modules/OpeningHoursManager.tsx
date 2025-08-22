@@ -139,7 +139,7 @@ export default function OpeningHoursManager() {
     try {
       setLoadingPauses(true);
       const response = await fetch(
-        `http://localhost:9000/merchants/${selectedMerchant.merchant_id}/interruptions?userId=${user.id}`
+        `http://localhost:8085/merchants/${selectedMerchant.merchant_id}/interruptions?userId=${user.id}`
       );
       
       if (!response.ok) {
@@ -177,7 +177,7 @@ export default function OpeningHoursManager() {
       setCancelingPause(pauseId);
       
       const response = await fetch(
-        `http://localhost:9000/merchants/${selectedMerchant.merchant_id}/interruptions/${pauseId}`,
+        `http://localhost:8085/merchants/${selectedMerchant.merchant_id}/interruptions/${pauseId}`,
         {
           method: 'DELETE',
           headers: {
@@ -420,7 +420,7 @@ export default function OpeningHoursManager() {
         return;
       }
 
-      const response = await fetch(`http://localhost:9000/merchants/${selectedMerchant.merchant_id}/interruptions`, {
+      const response = await fetch(`http://localhost:8085/merchants/${selectedMerchant.merchant_id}/interruptions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -491,7 +491,7 @@ export default function OpeningHoursManager() {
     try {
       setDeletingDay(dayToDelete);
 
-      const response = await fetch(`http://localhost:8082/merchants/${selectedMerchant.merchant_id}/opening-hours/delete`, {
+      const response = await fetch(`http://localhost:8085/merchants/${selectedMerchant.merchant_id}/opening-hours/delete`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
@@ -549,7 +549,7 @@ export default function OpeningHoursManager() {
     try {
       setUpdating(true);
 
-      const response = await fetch(`http://localhost:9000/merchants/${selectedMerchant.merchant_id}/opening-hours`, {
+      const response = await fetch(`http://localhost:8085/merchants/${selectedMerchant.merchant_id}/opening-hours`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

@@ -39,6 +39,26 @@ interface ServiceResponse {
   updated_products?: number;
 }
 
+interface CreateCategoryRequest {
+  id: string;
+  name: string;
+  externalCode: string;
+  status: 'AVAILABLE' | 'UNAVAILABLE';
+  index: number;
+  template: 'DEFAULT' | 'PIZZA' | 'COMBO';
+}
+
+interface CreateCategoryResponse {
+  success: boolean;
+  data?: {
+    categoryId: string;
+    merchantId: string;
+    catalogId: string;
+    name?: string;
+  };
+  error?: string;
+}
+
 export class IFoodProductService {
   private supabase: SupabaseClient;
   private readonly IFOOD_API_BASE_URL = 'https://merchant-api.ifood.com.br';
@@ -329,6 +349,340 @@ export class IFoodProductService {
     } catch (error: any) {
       console.error(`❌ [ERROR] Erro ao processar produtos do merchant ${merchantId}:`, error);
       throw error;
+    }
+  }
+
+  /**
+   * Criar uma nova categoria no catálogo do iFood
+   * Endpoint: POST /catalog/v2.0/merchants/{merchantId}/catalogs/{catalogId}/categories
+   */
+  async createCategory(userId: string, merchantId: string, categoryData: Omit<CreateCategoryRequest, 'id'>, accessToken?: string): Promise<CreateCategoryResponse> {
+    try {
+      console.log(`🏪 [CREATE CATEGORY] Iniciando criação de categoria para merchant: ${merchantId}`);
+      console.log(`📝 [CREATE CATEGORY] Dados da categoria:`, categoryData);
+
+      // 1. Usar token fornecido ou buscar no banco
+      let token = accessToken;
+      
+      if (!token) {
+        console.log('🔍 [STEP 1] Buscando token de acesso no banco...');
+        const { data: tokenData, error: tokenError } = await this.supabase
+          .from('ifood_tokens')
+          .select('access_token')
+          .eq('user_id', userId)
+          .single();
+
+        if (tokenError || !tokenData?.access_token) {
+          console.error('❌ [TOKEN FAILURE] Token não encontrado para user_id:', userId);
+          return {
+            success: false,
+            error: 'Token de acesso não encontrado. Faça login no iFood primeiro.'
+          };
+        }
+
+        token = tokenData.access_token;
+        console.log('✅ [STEP 1] Token obtido do banco com sucesso');
+      } else {
+        console.log('✅ [STEP 1] Usando token fornecido via parâmetro');
+      }
+
+      // 2. Buscar catalog_id via API do iFood
+      console.log('🔍 [STEP 2] Buscando catalog_id do merchant...');
+      const catalogsUrl = `${this.IFOOD_API_BASE_URL}/catalog/v2.0/merchants/${merchantId}/catalogs`;
+      
+      let catalogId: string;
+      try {
+        const catalogsResponse = await axios.get(catalogsUrl, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json'
+          }
+        });
+
+        const catalogsData = catalogsResponse.data;
+        if (!catalogsData || !Array.isArray(catalogsData) || catalogsData.length === 0) {
+          return {
+            success: false,
+            error: 'Nenhum catálogo encontrado para este merchant'
+          };
+        }
+
+        catalogId = catalogsData[0].catalogId || catalogsData[0].id;
+        console.log(`✅ [STEP 2] Catalog ID encontrado: ${catalogId}`);
+        
+      } catch (error: any) {
+        console.error('❌ [STEP 2] Erro ao buscar catálogo:', error.response?.data || error.message);
+        return {
+          success: false,
+          error: 'Erro ao buscar catálogo do merchant'
+        };
+      }
+
+      // 3. Criar categoria usando merchantId como ID da categoria
+      console.log('📦 [STEP 3] Criando categoria no iFood...');
+      const createCategoryUrl = `${this.IFOOD_API_BASE_URL}/catalog/v2.0/merchants/${merchantId}/catalogs/${catalogId}/categories`;
+      
+      // Gerar ID único para a categoria
+      const categoryId = `cat_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      // Criar body com formato correto para a API do iFood
+      const requestBody: any = {
+        name: categoryData.name,
+        status: categoryData.status, // iFood usa AVAILABLE/UNAVAILABLE
+        index: categoryData.index,
+        template: categoryData.template === 'PIZZA' ? 'PIZZA' : 'DEFAULT' // Apenas DEFAULT ou PIZZA
+      };
+      
+      // Adicionar campos opcionais apenas se fornecidos
+      if (categoryData.externalCode) {
+        requestBody.externalCode = categoryData.externalCode;
+      }
+
+      console.log('🌐 [API REQUEST] URL:', createCategoryUrl);
+      console.log('📤 [API REQUEST] Body:', requestBody);
+
+      try {
+        const createResponse = await axios.post(createCategoryUrl, requestBody, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        });
+
+        console.log('✅ [STEP 3] Categoria criada com sucesso');
+        console.log('📥 [API RESPONSE] Status:', createResponse.status);
+        console.log('📥 [API RESPONSE] Data:', createResponse.data);
+
+        // 4. Salvar categoria local para referência futura (opcional)
+        try {
+          await this.supabase
+            .from('ifood_categories')
+            .insert({
+              category_id: categoryId,
+              ifood_category_id: createResponse.data.id, // ID retornado pela API do iFood
+              merchant_id: merchantId,
+              catalog_id: catalogId,
+              name: requestBody.name,
+              external_code: requestBody.externalCode,
+              status: requestBody.status,
+              index: requestBody.index,
+              template: requestBody.template,
+              sequence_number: createResponse.data.sequence || createResponse.data.index || requestBody.index,
+              user_id: userId,
+              created_at: new Date().toISOString()
+            });
+
+          console.log('💾 [STEP 4] Categoria salva localmente com ID do iFood:', createResponse.data.id);
+        } catch (localError) {
+          console.warn('⚠️ [STEP 4] Erro ao salvar categoria localmente:', localError);
+          // Não falhar por erro local
+        }
+
+        return {
+          success: true,
+          data: {
+            categoryId: categoryId,
+            merchantId: merchantId,
+            catalogId: catalogId,
+            name: categoryData.name
+          }
+        };
+
+      } catch (error: any) {
+        console.error('❌ [STEP 3] Erro ao criar categoria:', error.response?.data || error.message);
+        console.error('❌ [STEP 3] Detalhes completos do erro:', JSON.stringify(error.response?.data, null, 2));
+        return {
+          success: false,
+          error: error.response?.data?.message || error.message || 'Erro ao criar categoria no iFood'
+        };
+      }
+
+    } catch (error: any) {
+      console.error('❌ [CREATE CATEGORY] Erro geral:', error);
+      return {
+        success: false,
+        error: error.message || 'Erro interno ao criar categoria'
+      };
+    }
+  }
+
+  /**
+   * Sincronizar todas as categorias do iFood para o banco de dados
+   * Busca categorias existentes na API e salva localmente
+   */
+  async syncCategories(userId: string, merchantId: string, accessToken?: string): Promise<{success: boolean; data?: any; error?: string}> {
+    try {
+      console.log(`📂 [SYNC CATEGORIES] Iniciando sincronização de categorias para merchant: ${merchantId}`);
+
+      // 1. Usar token fornecido ou buscar no banco
+      let token = accessToken;
+      if (!token) {
+        console.log('🔍 [STEP 1] Buscando token de acesso no banco...');
+        const { data: tokenData, error: tokenError } = await this.supabase
+          .from('ifood_tokens')
+          .select('access_token')
+          .eq('user_id', userId)
+          .single();
+
+        if (tokenError || !tokenData?.access_token) {
+          console.error('❌ [TOKEN FAILURE] Token não encontrado para user_id:', userId);
+          return {
+            success: false,
+            error: 'Token de acesso não encontrado. Faça login no iFood primeiro.'
+          };
+        }
+        token = tokenData.access_token;
+        console.log('✅ [STEP 1] Token obtido do banco com sucesso');
+      }
+
+      // 2. Buscar catalog_id via API do iFood
+      console.log('🔍 [STEP 2] Buscando catalog_id do merchant...');
+      const catalogsUrl = `${this.IFOOD_API_BASE_URL}/catalog/v2.0/merchants/${merchantId}/catalogs`;
+      
+      let catalogId: string;
+      try {
+        const catalogsResponse = await axios.get(catalogsUrl, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json'
+          }
+        });
+
+        const catalogsData = catalogsResponse.data;
+        if (!catalogsData || !Array.isArray(catalogsData) || catalogsData.length === 0) {
+          return {
+            success: false,
+            error: 'Nenhum catálogo encontrado para este merchant'
+          };
+        }
+
+        catalogId = catalogsData[0].catalogId || catalogsData[0].id;
+        console.log(`✅ [STEP 2] Catalog ID encontrado: ${catalogId}`);
+      } catch (error: any) {
+        console.error('❌ [STEP 2] Erro ao buscar catálogo:', error.response?.data || error.message);
+        return {
+          success: false,
+          error: 'Erro ao buscar catálogo do merchant'
+        };
+      }
+
+      // 3. Buscar TODAS as categorias da API do iFood
+      console.log('📂 [STEP 3] Buscando todas as categorias do catálogo...');
+      const categoriesUrl = `${this.IFOOD_API_BASE_URL}/catalog/v2.0/merchants/${merchantId}/catalogs/${catalogId}/categories`;
+      
+      let allCategories: any[] = [];
+      try {
+        const categoriesResponse = await axios.get(categoriesUrl, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json'
+          }
+        });
+
+        allCategories = categoriesResponse.data || [];
+        console.log(`✅ [STEP 3] ${allCategories.length} categorias encontradas na API do iFood`);
+      } catch (error: any) {
+        console.error('❌ [STEP 3] Erro ao buscar categorias:', error.response?.data || error.message);
+        return {
+          success: false,
+          error: 'Erro ao buscar categorias da API do iFood'
+        };
+      }
+
+      // 4. Sincronizar categorias no banco de dados
+      console.log('💾 [STEP 4] Sincronizando categorias no banco de dados...');
+      let newCount = 0;
+      let updatedCount = 0;
+      let skippedCount = 0;
+
+      for (const apiCategory of allCategories) {
+        try {
+          // Verificar se categoria já existe no banco
+          const { data: existingCategory } = await this.supabase
+            .from('ifood_categories')
+            .select('id, name, status')
+            .eq('ifood_category_id', apiCategory.id)
+            .eq('merchant_id', merchantId)
+            .single();
+
+          if (existingCategory) {
+            // Atualizar categoria existente se houver mudanças
+            if (existingCategory.name !== apiCategory.name || existingCategory.status !== apiCategory.status) {
+              await this.supabase
+                .from('ifood_categories')
+                .update({
+                  name: apiCategory.name,
+                  status: apiCategory.status,
+                  index: apiCategory.index || 0,
+                  template: apiCategory.template || 'DEFAULT',
+                  sequence_number: apiCategory.sequence || apiCategory.index || 0,
+                  external_code: apiCategory.externalCode,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('ifood_category_id', apiCategory.id)
+                .eq('merchant_id', merchantId);
+
+              updatedCount++;
+              console.log(`🔄 [STEP 4] Categoria atualizada: ${apiCategory.name}`);
+            } else {
+              skippedCount++;
+              console.log(`⏭️ [STEP 4] Categoria inalterada: ${apiCategory.name}`);
+            }
+          } else {
+            // Criar nova categoria no banco
+            const categoryId = `cat_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            
+            await this.supabase
+              .from('ifood_categories')
+              .insert({
+                category_id: categoryId,
+                ifood_category_id: apiCategory.id,
+                merchant_id: merchantId,
+                catalog_id: catalogId,
+                name: apiCategory.name,
+                external_code: apiCategory.externalCode,
+                status: apiCategory.status || 'AVAILABLE',
+                index: apiCategory.index || 0,
+                template: apiCategory.template || 'DEFAULT',
+                sequence_number: apiCategory.sequence || apiCategory.index || 0,
+                user_id: userId,
+                created_at: new Date().toISOString()
+              });
+
+            newCount++;
+            console.log(`➕ [STEP 4] Nova categoria adicionada: ${apiCategory.name}`);
+          }
+        } catch (error: any) {
+          console.error(`❌ [STEP 4] Erro ao processar categoria ${apiCategory.name}:`, error);
+          continue;
+        }
+      }
+
+      console.log(`✅ [SYNC CATEGORIES] Sincronização concluída:`);
+      console.log(`  📊 Total na API: ${allCategories.length}`);
+      console.log(`  ➕ Novas: ${newCount}`);
+      console.log(`  🔄 Atualizadas: ${updatedCount}`);
+      console.log(`  ⏭️ Inalteradas: ${skippedCount}`);
+
+      return {
+        success: true,
+        data: {
+          total: allCategories.length,
+          new: newCount,
+          updated: updatedCount,
+          skipped: skippedCount,
+          merchant_id: merchantId,
+          catalog_id: catalogId
+        }
+      };
+
+    } catch (error: any) {
+      console.error('❌ [SYNC CATEGORIES] Erro geral:', error);
+      return {
+        success: false,
+        error: error.message || 'Erro interno ao sincronizar categorias'
+      };
     }
   }
 

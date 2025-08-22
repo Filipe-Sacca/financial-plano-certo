@@ -16,7 +16,9 @@ import {
   Users,
   TrendingUp,
   AlertCircle,
-  Activity
+  Activity,
+  Check,
+  X
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -72,7 +74,7 @@ const IfoodOrdersManager: React.FC = () => {
   const userId = 'c1488646-aca8-4220-aacc-00e7ae3d6490'; // Real user ID from database
   const { toast } = useToast();
 
-  const API_BASE = 'http://localhost:8085';
+  const API_BASE = 'http://localhost:8083';
 
   // Fetch polling status
   const fetchPollingStatus = async () => {
@@ -97,9 +99,14 @@ const IfoodOrdersManager: React.FC = () => {
       
       if (data.success) {
         setOrders(data.data?.orders || []);
+        console.log('📦 Orders fetched:', data.data?.orders?.length || 0);
+      } else {
+        console.error('❌ Error fetching orders:', data.error);
+        setOrders([]);
       }
     } catch (error) {
-      console.error('Error fetching orders:', error);
+      console.error('❌ Network error fetching orders:', error);
+      setOrders([]);
     } finally {
       setLoading(false);
     }
@@ -195,6 +202,21 @@ const IfoodOrdersManager: React.FC = () => {
       'CANCELLED': 'bg-red-100 text-red-800 border-red-200'
     };
     return colors[status] || 'bg-gray-100 text-gray-800 border-gray-200';
+  };
+
+  // Action handlers (sem funcionalidade por enquanto)
+  const handleConfirmOrder = (orderId: string) => {
+    toast({
+      title: "🔔 Ação Pendente",
+      description: `Confirmar pedido ${orderId.substring(0, 8)}... (funcionalidade em desenvolvimento)`
+    });
+  };
+
+  const handleCancelOrder = (orderId: string) => {
+    toast({
+      title: "🔔 Ação Pendente", 
+      description: `Cancelar pedido ${orderId.substring(0, 8)}... (funcionalidade em desenvolvimento)`
+    });
   };
 
   return (
@@ -347,7 +369,7 @@ const IfoodOrdersManager: React.FC = () => {
                   <TableHead>Status</TableHead>
                   <TableHead>Valor</TableHead>
                   <TableHead>Data</TableHead>
-                  <TableHead>Ações</TableHead>
+                  <TableHead className="text-center">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -374,10 +396,33 @@ const IfoodOrdersManager: React.FC = () => {
                       {new Date(order.created_at).toLocaleString('pt-BR')}
                     </TableCell>
                     <TableCell>
-                      <Button size="sm" variant="outline">
-                        <Eye className="h-3 w-3 mr-1" />
-                        Ver
-                      </Button>
+                      <div className="flex gap-2 justify-center">
+                        {order.status === 'PENDING' && (
+                          <>
+                            <Button 
+                              size="sm" 
+                              variant="default"
+                              className="bg-green-600 hover:bg-green-700 text-white"
+                              onClick={() => handleConfirmOrder(order.ifood_order_id)}
+                            >
+                              <Check className="h-3 w-3 mr-1" />
+                              Confirmar
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="destructive"
+                              onClick={() => handleCancelOrder(order.ifood_order_id)}
+                            >
+                              <X className="h-3 w-3 mr-1" />
+                              Cancelar
+                            </Button>
+                          </>
+                        )}
+                        <Button size="sm" variant="outline">
+                          <Eye className="h-3 w-3 mr-1" />
+                          Ver
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -388,16 +433,21 @@ const IfoodOrdersManager: React.FC = () => {
       </Card>
 
       {/* System Info */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
               <div className="h-8 w-8 bg-blue-100 rounded-full flex items-center justify-center">
-                <Users className="h-4 w-4 text-blue-600" />
+                <CheckCircle2 className="h-4 w-4 text-blue-600" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">User ID</p>
-                <p className="font-mono text-xs">{userId.substring(0, 8)}...</p>
+                <p className="text-sm text-muted-foreground">Status dos Pedidos</p>
+                <p className="text-sm font-medium">
+                  ✅ {orders?.filter(o => o.status === 'CONFIRMED').length || 0} Confirmados
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  ⏳ {orders?.filter(o => o.status === 'PENDING').length || 0} Pendentes
+                </p>
               </div>
             </div>
           </CardContent>
@@ -412,6 +462,31 @@ const IfoodOrdersManager: React.FC = () => {
               <div>
                 <p className="text-sm text-muted-foreground">Total Pedidos</p>
                 <p className="text-xl font-bold">{orders?.length || 0}</p>
+                <p className="text-xs text-muted-foreground">
+                  Pendentes: {orders?.filter(o => o.status === 'PENDING').length || 0}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2">
+              <div className="h-8 w-8 bg-yellow-100 rounded-full flex items-center justify-center">
+                <TrendingUp className="h-4 w-4 text-yellow-600" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Valor Total</p>
+                <p className="text-xl font-bold">
+                  R$ {(orders?.reduce((sum, order) => sum + (order.total_amount || 0), 0) || 0).toFixed(2)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Hoje: {orders?.filter(o => {
+                    const today = new Date().toDateString();
+                    return new Date(o.created_at).toDateString() === today;
+                  }).length || 0} pedidos
+                </p>
               </div>
             </div>
           </CardContent>
