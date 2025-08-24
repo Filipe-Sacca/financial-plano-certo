@@ -289,10 +289,7 @@ export class IFoodPollingService {
       
       // PERFORMANCE OPTIMIZED: Use connection pooling axios instance
       const response = await this.optimizedAxios.get(this.IFOOD_EVENTS_POLLING_URL, {
-        headers: {
-          ...headers,
-          ...this.optimizedAxios.defaults.headers
-        },
+        headers: headers,
         params: queryParams,
         validateStatus: (status) => status >= 200 && status < 300
       });
@@ -367,14 +364,7 @@ export class IFoodPollingService {
           eventsProcessed: storedEvents,
           eventsAcknowledged: 0, // Will be handled by acknowledgment service
           pollingDurationMs: Date.now() - startTime,
-          nextPollingAt: pollingTimer.calculateNextPollingTime().toISOString(),
-          // PERFORMANCE METRICS
-          timingAccuracy: timingMetrics.accuracy,
-          apiResponseTimeMs: apiResponseTime,
-          processingDurationMs: processingDuration,
-          memoryDeltaMB: memoryDelta,
-          duplicatesFiltered,
-          performanceGrade: pollingUtils.getPerformanceGrade(pollingTimer.getPerformanceMetrics()).grade
+          nextPollingAt: pollingTimer.calculateNextPollingTime().toISOString()
         },
         metadata: {
           executionTimeMs: Date.now() - startTime,
@@ -880,8 +870,7 @@ export class IFoodPollingService {
           headers: {
             'Accept': 'application/json',
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${tokenData.access_token}`,
-            ...this.optimizedAxios.defaults.headers
+            'Authorization': `Bearer ${tokenData.access_token}`
           }
         }
       );

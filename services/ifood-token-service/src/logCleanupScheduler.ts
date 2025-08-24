@@ -54,7 +54,7 @@ export class LogCleanupScheduler {
    */
   stop(): void {
     if (this.cronJob) {
-      this.cronJob.destroy();
+      (this.cronJob as any).stop();
       this.cronJob = null;
       this.isRunning = false;
       console.log('🛑 Log cleanup scheduler stopped');

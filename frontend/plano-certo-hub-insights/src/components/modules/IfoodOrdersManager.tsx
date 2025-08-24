@@ -74,7 +74,7 @@ const IfoodOrdersManager: React.FC = () => {
   const userId = 'c1488646-aca8-4220-aacc-00e7ae3d6490'; // Real user ID from database
   const { toast } = useToast();
 
-  const API_BASE = 'http://localhost:8083';
+  const API_BASE = 'http://localhost:8085';
 
   // Fetch polling status
   const fetchPollingStatus = async () => {

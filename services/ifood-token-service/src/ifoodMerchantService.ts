@@ -686,7 +686,8 @@ export class IFoodMerchantService {
         success: true,
         total_processed: merchant_ids.length,
         updated_merchants: [] as string[],
-        failed_merchants: [] as Array<{ merchant_id: string; error: string }>
+        failed_merchants: [] as Array<{ merchant_id: string; error: string }>,
+        message: ''
       };
 
       for (const merchantId of merchant_ids) {

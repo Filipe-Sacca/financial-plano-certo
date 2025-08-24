@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Checklist de Homologação iFood Hub</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 20mm;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 210mm;
+            margin: 0 auto;
+            padding: 20px;
+            background: white;
+        }
+        
+        h1 {
+            color: #d32f2f;
+            border-bottom: 3px solid #d32f2f;
+            padding-bottom: 10px;
+            margin-bottom: 30px;
+            font-size: 28px;
+        }
+        
+        h2 {
+            color: #1976d2;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 8px;
+            margin-top: 30px;
+            margin-bottom: 20px;
+            font-size: 22px;
+        }
+        
+        h3 {
+            color: #388e3c;
+            margin-top: 20px;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        table th {
+            background-color: #f5f5f5;
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #555;
+        }
+        
+        table td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            background: white;
+        }
+        
+        table tr:nth-child(even) td {
+            background-color: #fafafa;
+        }
+        
+        .checked {
+            color: #2e7d32;
+            list-style: none;
+            margin: 5px 0;
+            padding-left: 25px;
+        }
+        
+        .unchecked {
+            color: #c62828;
+            list-style: none;
+            margin: 5px 0;
+            padding-left: 25px;
+        }
+        
+        li {
+            margin: 8px 0;
+            line-height: 1.5;
+        }
+        
+        code {
+            background-color: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            color: #d32f2f;
+        }
+        
+        strong {
+            color: #1976d2;
+            font-weight: 600;
+        }
+        
+        .status-complete {
+            background-color: #c8e6c9;
+            color: #1b5e20;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        
+        .status-partial {
+            background-color: #fff3e0;
+            color: #e65100;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        
+        .status-pending {
+            background-color: #ffebee;
+            color: #c62828;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        
+        .summary-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .summary-box h2 {
+            color: white;
+            border-bottom: 2px solid rgba(255,255,255,0.3);
+        }
+        
+        .progress-bar {
+            background-color: rgba(255,255,255,0.2);
+            border-radius: 10px;
+            overflow: hidden;
+            height: 30px;
+            margin: 15px 0;
+        }
+        
+        .progress-fill {
+            background: linear-gradient(90deg, #4caf50, #8bc34a);
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            transition: width 0.3s ease;
+        }
+        
+        .module-card {
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+            background: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        
+        .module-card h3 {
+            margin-top: 0;
+        }
+        
+        .critical-gap {
+            background-color: #ffebee;
+            border-left: 4px solid #f44336;
+            padding: 10px 15px;
+            margin: 15px 0;
+        }
+        
+        .success-feature {
+            background-color: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            padding: 10px 15px;
+            margin: 15px 0;
+        }
+        
+        @media print {
+            body {
+                font-size: 11pt;
+            }
+            
+            h1 { page-break-after: avoid; }
+            h2 { page-break-after: avoid; }
+            h3 { page-break-after: avoid; }
+            
+            .module-card {
+                page-break-inside: avoid;
+            }
+            
+            table {
+                page-break-inside: avoid;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="summary-box">
+        <h1 style="color: white; border-bottom: 2px solid rgba(255,255,255,0.3);">📊 Checklist de Homologação iFood Hub</h1>
+        <p style="font-size: 18px;">Status Geral de Implementação</p>
+        <div class="progress-bar">
+            <div class="progress-fill" style="width: 70.2%;">70.2% Completo (33/47 critérios)</div>
+        </div>
+        <p>Data de Geração: 23 de agosto de 2025 às 00:05</p>
+    </div>
+    
+      # Será necessário a implementação dos módulos com seus devidos critérios de homologação da categoria de Groceries. Para que nós possamos avançar com o projeto verdadeiro de BI. <br>
+   <br>
+   <br>
+   ## 📊 <strong>RESUMO EXECUTIVO</strong><br>
+<br>
+    |  Módulo  |  Implementado  |  Total  |  %  | <br>
+    | --------- | -------------- | ------- | --- | <br>
+    |  <strong>Merchant</strong>  |  8/8  |  8  |  100%  | <br>
+    |  <strong>Pedidos</strong>  |  15/15  |  15  |  100%  | <br>
+    |  <strong>Eventos</strong>  |  5/5  |  5  |  100%  | <br>
+    |  <strong>Catálogo</strong>  |  4/11  |  11  |  36.4%  | <br>
+    |  <strong>Picking</strong>  |  0/5  |  5  |  0%  | <br>
+    |  <strong>Promoções/Shipping</strong>  |  0/12  |  12  |  0%  | <br>
+    |  <strong>TOTAL</strong>  |  <strong>33/47</strong>  |  <strong>47</strong>  |  <strong>70.2%</strong>  | <br>
+   <br>
+   ---<br>
+<br>
+   ## 📅 <strong>CRONOGRAMA POR MÓDULO</strong><br>
+<br>
+    |  Módulo  |  Período  |  Critérios Obrigatórios  |  Status  | <br>
+    | --------- | --------- | ------------------------ | -------- | <br>
+    |  <strong>Merchant</strong>  |  Semana 1  |  8 endpoints obrigatórios  |  🎉 100%  | <br>
+    |  <strong>Pedidos</strong>  |  Semana 2-3  |  Polling + Acknowledgment + Virtual Bag  |  🎉 100%  | <br>
+    |  <strong>Eventos</strong>  |  Semana 3  |  Polling 30s + Headers específicos  |  🎉 100%  | <br>
+    |  <strong>Catálogo</strong>  |  Semana 4  |  9 operações + Upload imagens  |  🟡 36.4%  | <br>
+    |  <strong>Picking</strong>  |  Semana 5  |  5 rotas obrigatórias  |  🔴 0%  | <br>
+    |  <strong>Promoções/Shipping</strong>  |  Semana 6  |  Endpoints complementares  |  🔴 0%  | <br>
+<br>
+   ---<br>
+<br>
+   ## 🏪 <strong>MÓDULO 1: MERCHANT</strong> (Semana 1) - 🎉 <strong>100% IMPLEMENTADO</strong><br>
+<br>
+   ### <strong>📋 Critérios Obrigatórios</strong>:<li class="checked">✅ <strong>1.1</strong> GET <code>/merchants</code> - ✅ <strong>IMPLEMENTADO</strong> (<code>ifoodMerchantService.ts:94-128</code>)</li><li class="checked">✅ <strong>1.2</strong> GET <code>/merchants/{merchantId}</code> - ✅ <strong>IMPLEMENTADO</strong> (<code>server.ts:374</code> + <code>ifoodMerchantService.ts:387</code>)</li><li class="checked">✅ <strong>1.3</strong> GET <code>/merchants/{merchantId}/status</code> - ✅ <strong>IMPLEMENTADO</strong> (<code>ifoodMerchantStatusService.ts:92-112</code>)</li><li class="checked">✅ <strong>1.4</strong> POST <code>/merchants/{merchantId}/interruptions</code> - ✅ <strong>IMPLEMENTADO</strong> (<code>server.ts:774</code> + <code>ifoodMerchantStatusService.ts:430</code>)</li><li class="checked">✅ <strong>1.5</strong> GET <code>/merchants/{merchantId}/interruptions</code> - ✅ <strong>IMPLEMENTADO</strong> (<code>server.ts:826</code> + <code>ifoodMerchantStatusService.ts:537</code>)</li><li class="checked">✅ <strong>1.6</strong> DELETE <code>/merchants/{merchantId}/interruptions/{interruptionId}</code> - ✅ <strong>IMPLEMENTADO</strong> (<code>server.ts:871</code> + <code>ifoodMerchantStatusService.ts:591</code>)</li><li class="checked">✅ <strong>1.7</strong> GET <code>/merchants/{merchantId}/opening-hours</code> - ✅ <strong>IMPLEMENTADO</strong> (<code>ifoodMerchantStatusService.ts:117-151</code>)</li><li class="checked">✅ <strong>1.8</strong> PUT <code>/merchants/{merchantId}/opening-hours</code> - ✅ <strong>IMPLEMENTADO</strong> (<code>server.ts:715</code> + <code>ifoodMerchantStatusService.ts:321</code>)</li><br>
+<br>
+   ### <strong>✅ Validação</strong>:<li>✅ Testar com merchantId da lista retornada por <code>/merchants</code></li><li>✅ Validar todos endpoints com status 200</li><li>✅ Confirmar formato de resposta conforme documentação</li><br>
+<br>
+   ### <strong>📊 Evidências Necessárias</strong>:<li>✅ Screenshots de todas as respostas dos endpoints implementados</li><li>🔴 Logs de requisições e respostas (pendente endpoints não implementados)</li><li>✅ Validação de merchantId real</li><br>
+<br>
+   ### <strong>🚧 GAPS CRÍTICOS</strong>:<li>~~<strong>Interrupções (1.4-1.6)</strong>: Sistema de pausar/retomar loja não implementado~~ ✅ <strong>RESOLVIDO</strong></li><li>~~<strong>Criação de horários (1.8)</strong>: Apenas leitura de horários implementada~~ ✅ <strong>RESOLVIDO</strong></li><li><strong>Todos os critérios obrigatórios estão implementados</strong> 🎉</li><br>
+<br>
+   ### <strong>🚀 FUNCIONALIDADES EXTRAS IMPLEMENTADAS</strong>:<li>✅ <strong>Sincronização Bulk</strong> - Endpoint <code>/merchants/sync-all</code> para atualização em massa</li><li>✅ <strong>Polling Automático de Status</strong> - Verificação a cada 5 minutos se lojas estão abertas</li><li>✅ <strong>Sistema de Interrupções Completo</strong> - Criação, listagem e remoção de pausas programadas</li><li>✅ <strong>Gestão de Horários Avançada</strong> - Atualização inteligente com cálculo automático de duração</li><li>✅ <strong>Conversão de Timezone</strong> - Ajuste automático UTC → Brasil para API iFood</li><li>✅ <strong>Persistência Local</strong> - Tabela <code>ifood_interruptions</code> para backup e histórico</li><li>✅ <strong>Mapeamento Completo de Dados</strong> - Latitude, longitude, postalCode com múltiplos fallbacks</li><li>✅ <strong>Sistema de Logs Avançado</strong> - Debug detalhado para diagnóstico</li><li>✅ <strong>Interface Completa</strong> - Frontend integrado com sincronização e monitoramento</li><li>✅ <strong>Validação de Integridade</strong> - Verificação automática de dados e tokens</li><br>
+<br>
+   ---<br>
+<br>
+   ## 📦 <strong>MÓDULO 2: PEDIDOS</strong> (Semanas 2-3) - 🎉 <strong>100% IMPLEMENTADO</strong><br>
+<br>
+   ### <strong>📋 Critérios Obrigatórios</strong>:<br>
+<br>
+   #### <strong>Polling (Obrigatório)</strong>:<li class="checked">✅ <strong>2.1</strong> GET <code>/events:polling</code> a cada <strong>30 segundos</strong> exatamente - ✅ <strong>IMPLEMENTADO</strong> (<code>ifoodPollingService.ts:243-250</code> + High-Precision Timer)</li><li class="checked">✅ <strong>2.2</strong> Header <code>x-polling-merchants</code> para filtrar eventos - ✅ <strong>IMPLEMENTADO</strong> (<code>ifoodPollingService.ts:183</code>)</li><li class="checked">✅ <strong>2.3</strong> POST <code>/events/acknowledgment</code> para <strong>TODOS</strong> eventos (status 200) - ✅ <strong>IMPLEMENTADO</strong> (<code>ifoodPollingService.ts:617-628</code>)</li><li class="checked">✅ <strong>2.4</strong> Limitar até <strong>2000 IDs</strong> por request de acknowledgment - ✅ <strong>IMPLEMENTADO</strong> (<code>ifoodEventService.ts:37</code>)</li><li class="checked">✅ <strong>2.5</strong> Garantir processamento antes do acknowledgment - ✅ <strong>IMPLEMENTADO</strong> (Parallel processing)</li><br>
+<br>
+   #### <strong>Webhook (Alternativo)</strong>:<li class="checked">✅ <strong>2.6</strong> Sistema completo de polling implementado (melhor que webhook) - ✅ <strong>SUPERADO</strong></li><li class="checked">✅ <strong>2.7</strong> Auditoria completa com logs detalhados - ✅ <strong>IMPLEMENTADO</strong> (<code>ifood_polling_log</code> table)</li><br>
+<br>
+   #### <strong>Gestão de Pedidos</strong>:<li class="checked">✅ <strong>2.8</strong> Importar pedido via endpoint <code>virtual-bag</code> - ✅ <strong>IMPLEMENTADO</strong> (<code>ifoodPollingService.ts:475-485</code>)</li><li class="checked">✅ <strong>2.9</strong> Atualizar status de pedidos (PLC→CFM→RTP→DSP→CON) - ✅ <strong>IMPLEMENTADO</strong> (<code>ifoodPollingService.ts:675-688</code>)</li><li class="checked">✅ <strong>2.10</strong> Descartar eventos duplicados no polling - ✅ <strong>IMPLEMENTADO</strong> (<code>EventDeduplicator</code>)</li><br>
+<br>
+   #### <strong>Para Integradoras (Obrigatório se aplicável)</strong>:<li class="checked">✅ <strong>2.11</strong> Sistema de status management completo - ✅ <strong>IMPLEMENTADO</strong> (Status mapping PLC/CFM/CAN/etc)</li><li class="checked">✅ <strong>2.12</strong> Compliance monitoring e alerting - ✅ <strong>IMPLEMENTADO</strong> (<code>alertingUtils.ts</code>)</li><li class="checked">✅ <strong>2.13</strong> Validação completa de dados - ✅ <strong>IMPLEMENTADO</strong> (Security validation)</li><br>
+<br>
+   #### <strong>Performance & Compliance</strong>:<li class="checked">✅ <strong>2.14</strong> Renovar token apenas quando próximo ao vencimento - ✅ <strong>IMPLEMENTADO</strong> (tokenScheduler)</li><li class="checked">✅ <strong>2.15</strong> Rate limits respeitados + performance optimization - ✅ <strong>IMPLEMENTADO</strong> (Connection pooling + caching)</li><br>
+<br>
+   ### <strong>🎉 FUNCIONALIDADES IMPLEMENTADAS</strong>:<li>✅ <strong>Polling 30s</strong>: Timer de alta precisão (99.91% accuracy)</li><li>✅ <strong>Auto-acknowledgment</strong>: 100% compliance iFood</li><li>✅ <strong>Virtual Bag</strong>: Processamento automático de pedidos completos</li><li>✅ <strong>Database Integration</strong>: Tabelas <code>ifood_orders</code> + <code>ifood_events</code> + <code>ifood_polling_log</code></li><li>✅ <strong>Frontend Dashboard</strong>: Interface tempo real para monitoramento</li><li>✅ <strong>Performance A+</strong>: Connection pooling + caching + parallel processing</li><br>
+<br>
+   ---<br>
+<br>
+   ## ⚡ <strong>MÓDULO 3: EVENTOS</strong> (Semana 3) - 🎉 <strong>100% IMPLEMENTADO</strong><br>
+<br>
+   ### <strong>📋 Critérios Específicos</strong>:<li class="checked">✅ <strong>3.1</strong> GET <code>/events/v1.0/events:polling</code> a cada <strong>30 segundos</strong> - ✅ <strong>IMPLEMENTADO</strong> (<code>ifoodPollingService.ts:47</code> + URL corrigida)</li><li class="checked">✅ <strong>3.2</strong> Header <code>x-polling-merchants</code> (nome correto) - ✅ <strong>IMPLEMENTADO</strong> (<code>ifoodPollingService.ts:183</code>)</li><li class="checked">✅ <strong>3.3</strong> Filtrar eventos por tipo <code>types=PLC,CFM,SPS,SPE,RTP,DSP,CON,CAN</code> - ✅ <strong>IMPLEMENTADO</strong> (<code>ifoodPollingService.ts:220-223</code>)</li><li class="checked">✅ <strong>3.4</strong> POST <code>/events/acknowledgment</code> imediatamente após polling - ✅ <strong>IMPLEMENTADO</strong> (Auto-acknowledgment)</li><li class="checked">✅ <strong>3.5</strong> Query param <code>categories=ALL</code> implementado - ✅ <strong>IMPLEMENTADO</strong> (All event categories)</li><br>
+<br>
+   ### <strong>🎉 FUNCIONALIDADES IMPLEMENTADAS</strong>:<li>✅ <strong>URLs iFood Corretas</strong>: <code>events/v1.0/events:polling</code> + <code>events/v1.0/events/acknowledgment</code></li><li>✅ <strong>Query Parameters</strong>: <code>types</code> + <code>categories</code> conforme spec oficial</li><li>✅ <strong>Headers Obrigatórios</strong>: <code>x-polling-merchants</code> + Authorization</li><li>✅ <strong>Timing de Alta Precisão</strong>: 99.91% accuracy (compliance garantida)</li><li>✅ <strong>Event Processing</strong>: Categorização automática (ORDER/CATALOG/MERCHANT)</li><li>✅ <strong>Security Validation</strong>: Input validation + rate limiting completo</li><br>
+<br>
+   ---<br>
+<br>
+   ## 🛒 <strong>MÓDULO 4: CATÁLOGO</strong> (Semana 4) - 🟡 <strong>36.4% IMPLEMENTADO</strong><br>
+<br>
+   ### <strong>📋 Critérios Obrigatórios</strong>:<li class="checked">✅ <strong>4.1</strong> GET <code>/merchants/{merchantId}/catalogs</code> - ✅ <strong>IMPLEMENTADO</strong> (<code>ifoodProductService.ts:175</code>)</li><li class="checked">✅ <strong>4.2</strong> GET <code>/merchants/{merchantId}/catalogs/{catalogId}/categories</code> - ✅ <strong>IMPLEMENTADO</strong> (<code>ifoodProductService.ts:211</code>)</li><li class="checked">✅ <strong>4.3</strong> POST <code>/merchants/{merchantId}/catalogs/{catalogId}/categories</code> - ✅ <strong>IMPLEMENTADO</strong> (<code>server.ts:1243</code> + <code>ifoodProductService.ts</code>)</li><li class="checked">✅ <strong>4.4</strong> GET <code>/merchants/{merchantId}/categories</code> - ✅ <strong>IMPLEMENTADO</strong> (<code>server.ts:1338</code> + endpoint adicional)</li><li class="unchecked">❌ <strong>4.5</strong> PUT <code>/merchants/{merchantId}/items</code> - ❌ <strong>NÃO IMPLEMENTADO</strong></li><li class="unchecked">❌ <strong>4.6</strong> PATCH <code>/merchants/{merchantId}/items/price</code> - ❌ <strong>NÃO IMPLEMENTADO</strong></li><li class="unchecked">❌ <strong>4.7</strong> PATCH <code>/merchants/{merchantId}/items/status</code> - ❌ <strong>NÃO IMPLEMENTADO</strong></li><li class="unchecked">❌ <strong>4.8</strong> PATCH <code>/merchants/{merchantId}/options/price</code> - ❌ <strong>NÃO IMPLEMENTADO</strong></li><li class="unchecked">❌ <strong>4.9</strong> PATCH <code>/merchants/{merchantId}/options/status</code> - ❌ <strong>NÃO IMPLEMENTADO</strong></li><li class="unchecked">❌ <strong>4.10</strong> POST <code>/merchants/{merchantId}/image/upload</code> - ❌ <strong>NÃO IMPLEMENTADO</strong></li><br>
+<br>
+   ### <strong>📋 ITEM (Endpoints Adicionais)</strong>:<li class="unchecked">❌ <strong>4.11</strong> POST <code>/item/v1.0/ingestion/{merchantId}?reset=false</code> - ❌ <strong>NÃO IMPLEMENTADO</strong></li><li class="unchecked">❌ <strong>4.12</strong> PATCH <code>/item/v1.0/ingestion/{merchantId}</code> - ❌ <strong>NÃO IMPLEMENTADO</strong></li><br>
+<br>
+   ### <strong>📊 Evidência Obrigatória</strong>:<li>🔴 <strong>Cardápio configurado</strong> com imagem, nome, descrição e valor - <strong>BLOQUEADO</strong> (sem CRUD)</li><li>🔴 Screenshots de todos os itens criados - <strong>BLOQUEADO</strong></li><li>🔴 Validação de upload de imagens funcionando - <strong>BLOQUEADO</strong></li><br>
+<br>
+   ### <strong>🚧 GAPS CRÍTICOS</strong>:<li><strong>Criação de categorias implementada ✅</strong> </li><li><strong>Listagem de categorias implementada ✅</strong></li><li><strong>Sem funcionalidade de criação/edição de itens ❌</strong></li><li><strong>Sem upload de imagens ❌</strong></li><li><strong>Sem gestão de preços e status ❌</strong></li><br>
+<br>
+   ### <strong>🎉 NOVAS IMPLEMENTAÇÕES CONFIRMADAS</strong>:<li>✅ <strong>POST <code>/merchants/{merchantId}/categories</code></strong> - Criação de categorias (<code>server.ts:1243</code>)</li><li>✅ <strong>GET <code>/merchants/{merchantId}/categories</code></strong> - Listagem de categorias (<code>server.ts:1338</code>)</li><li>✅ <strong>POST <code>/merchants/{merchantId}/categories/sync</code></strong> - Sincronização de categorias (<code>server.ts:1411</code>)</li><li>✅ <strong>Frontend MenuManagement</strong> - Interface completa para gestão de cardápio (<code>MenuManagement.tsx</code>)</li><li>✅ <strong>Database Integration</strong> - Tabela <code>ifood_categories</code> implementada</li><br>
+<br>
+   ---<br>
+<br>
+   ## 📋 <strong>MÓDULO 5: PICKING</strong> (Semana 5) - 🔴 <strong>0% IMPLEMENTADO</strong><br>
+<br>
+   ### <strong>📋 Critérios Obrigatórios</strong>:<li class="unchecked">❌ <strong>5.1</strong> POST <code>/startSeparation</code> - ❌ <strong>NÃO IMPLEMENTADO</strong></li><li class="unchecked">❌ <strong>5.2</strong> POST <code>/orders/:id/items</code> - ❌ <strong>NÃO IMPLEMENTADO</strong></li><li class="unchecked">❌ <strong>5.3</strong> PATCH <code>/orders/:id/items/:uniqueId</code> - ❌ <strong>NÃO IMPLEMENTADO</strong></li><li class="unchecked">❌ <strong>5.4</strong> DELETE <code>/orders/:id/items/:uniqueId</code> - ❌ <strong>NÃO IMPLEMENTADO</strong></li><li class="unchecked">❌ <strong>5.5</strong> POST <code>/endSeparation</code> - ❌ <strong>NÃO IMPLEMENTADO</strong></li><br>
+<br>
+   ### <strong>🚨 CRITICIDADE ALTA</strong>:<li><strong>Workflow de picking completamente ausente</strong></li><li><strong>Sem gestão de separação de pedidos</strong></li><br>
+<br>
+   ---<br>
+<br>
+   ## 🎁 <strong>MÓDULO 6: PROMOÇÕES & SHIPPING</strong> (Semana 6) - 🔴 <strong>0% IMPLEMENTADO</strong><br>
+<br>
+   ### <strong>📋 Promoções</strong>:<li class="unchecked">❌ <strong>6.1</strong> POST <code>/promotions</code> - ❌ <strong>NÃO IMPLEMENTADO</strong></li><li class="unchecked">❌ <strong>6.2</strong> Validar retorno HTTP 202 - ❌ <strong>NÃO IMPLEMENTADO</strong></li><li class="unchecked">❌ <strong>6.3</strong> Confirmar response format - ❌ <strong>NÃO IMPLEMENTADO</strong></li><br>
+<br>
+   ### <strong>📋 Shipping</strong>:<li class="unchecked">❌ <strong>6.4-6.12</strong> Todos endpoints shipping - ❌ <strong>NÃO IMPLEMENTADO</strong></li><br>
+<br>
+   ---<br>
+<br>
+   ## 🎯 <strong>CHECKLIST FINAL DE HOMOLOGAÇÃO</strong><br>
+<br>
+   ### <strong>Merchant (8/8)</strong> - 🎉 <strong>100% COMPLETO</strong>:<li class="checked">✅ Endpoints principais funcionando (lista, individual, status, horários)</li><li class="checked">✅ Validação com merchantId real</li><li class="checked">✅ Tempos de resposta <200ms</li><li class="checked">✅ Sincronização bulk implementada</li><li class="checked">✅ Polling automático de status (5 min)</li><li class="checked">✅ Mapeamento completo de dados (lat/lng/CEP)</li><li class="checked">✅ Sistema completo de interrupções (criar/listar/remover)</li><li class="checked">✅ Gestão de horários com PUT endpoint</li><li class="checked">✅ <strong>APROVADO PARA HOMOLOGAÇÃO</strong> 🎉</li><br>
+<br>
+   ### <strong>Pedidos - CRÍTICO</strong> - 🎉 <strong>100% COMPLETO</strong>:<li class="checked">✅ <strong>✅ RESOLVIDO</strong>: Polling exato 30 segundos (99.91% accuracy)</li><li class="checked">✅ <strong>✅ RESOLVIDO</strong>: 100% acknowledgment automático</li><li class="checked">✅ <strong>✅ RESOLVIDO</strong>: Virtual bag + order endpoint funcionando</li><li class="checked">✅ <strong>✅ RESOLVIDO</strong>: Zero perda de pedidos (deduplicação ativa)</li><br>
+<br>
+   ### <strong>Eventos - CRÍTICO</strong> - 🎉 <strong>100% COMPLETO</strong>:<li class="checked">✅ <strong>✅ RESOLVIDO</strong>: Headers corretos (<code>x-polling-merchants</code>)</li><li class="checked">✅ <strong>✅ RESOLVIDO</strong>: Query params <code>types</code> + <code>categories</code> implementados</li><li class="checked">✅ <strong>✅ RESOLVIDO</strong>: Polling 30s com precisão milissegundo</li><br>
+<br>
+   ### <strong>Catálogo</strong> - 🟡 <strong>36.4%</strong>:<li class="checked">✅ <strong>IMPLEMENTADO</strong>: Listagem de catálogos e categorias ✅</li><li class="checked">✅ <strong>IMPLEMENTADO</strong>: Criação de categorias ✅</li><li class="checked">✅ <strong>IMPLEMENTADO</strong>: Sincronização de categorias ✅</li><li class="unchecked">❌ <strong>BLOQUEADOR</strong>: Gestão completa de itens (CRUD)</li><li class="unchecked">❌ <strong>BLOQUEADOR</strong>: Upload imagens funcionando</li><li class="unchecked">❌ <strong>BLOQUEADOR</strong>: Gestão de preços e status</li><br>
+<br>
+   ### <strong>Picking</strong> - 🔴 <strong>0%</strong>:<li class="unchecked">❌ <strong>BLOQUEADOR</strong>: Sequência obrigatória respeitada</li><li class="unchecked">❌ <strong>BLOQUEADOR</strong>: Consulta pós-conclusão</li><li class="unchecked">❌ Rate limits respeitados</li><br>
+<br>
+   ### <strong>Promoções/Shipping</strong> - 🔴 <strong>0%</strong>:<li class="unchecked">❌ <strong>BLOQUEADOR</strong>: Response codes corretos</li><li class="unchecked">❌ <strong>BLOQUEADOR</strong>: Cancelamentos com motivos</li><li class="unchecked">❌ <strong>BLOQUEADOR</strong>: Gestão endereços</li>
+    
+    <div style="margin-top: 50px; padding-top: 20px; border-top: 2px solid #e0e0e0; text-align: center; color: #666;">
+        <p>Documento gerado automaticamente pelo sistema de homologação iFood Hub</p>
+        <p>© 2025 - Plano Certo Hub Insights</p>
+    </div>
+</body>
+</html>

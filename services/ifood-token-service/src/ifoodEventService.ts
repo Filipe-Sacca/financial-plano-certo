@@ -758,6 +758,7 @@ export class IFoodEventService {
    * Get acknowledgment statistics for monitoring
    */
   async getAcknowledgmentStatistics(userId: string): Promise<ServiceResult<any>> {
+    const startTime = Date.now();
     try {
       console.log(`📊 [EVENT-SERVICE] Fetching acknowledgment statistics for user: ${userId}`);
 

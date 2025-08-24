@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import { createClient } from '@supabase/supabase-js';
 import { IFoodTokenService, getTokenForUser } from './ifoodTokenService';
 import { IFoodMerchantService } from './ifoodMerchantService';
 import IFoodMerchantStatusService from './ifoodMerchantStatusService';
@@ -17,7 +18,12 @@ import { TokenRequest } from './types';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 8085;
+const PORT = process.env.PORT || 8084;
+
+// Initialize Supabase client
+const supabaseUrl = process.env.SUPABASE_URL!;
+const supabaseKey = process.env.SUPABASE_ANON_KEY!;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Middleware
 app.use(cors({
@@ -637,10 +643,8 @@ app.get('/merchants/:merchantId/debug', async (req, res) => {
   try {
     const { merchantId } = req.params;
     
-    // Usar a mesma instância do supabase que já existe
-    const merchantService = new IFoodMerchantService(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!);
-    
-    const { data, error } = await merchantService.supabase
+    // Use direct supabase connection
+    const { data, error } = await supabase
       .from('ifood_merchants')
       .select('*')
       .eq('merchant_id', merchantId)
@@ -1470,6 +1474,459 @@ app.post('/merchants/:merchantId/categories/sync', async (req, res) => {
       success: false,
       error: error.message || 'Internal server error',
       timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// ====================================================================
+// iFood Catalog Module - Item Management Endpoints
+// ====================================================================
+
+// Get Items (with optional category filter)
+app.get('/merchants/:merchantId/items', async (req, res) => {
+  try {
+    const { merchantId } = req.params;
+    const { user_id, category_id, sync } = req.query;
+
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'user_id is required'
+      });
+    }
+
+    console.log(`📦 [GET ITEMS] Merchant: ${merchantId}, User: ${user_id}, Category: ${category_id || 'all'}`);
+
+    // Inicializar conexões
+    const supabaseUrl = process.env.SUPABASE_URL!;
+    const supabaseKey = process.env.SUPABASE_ANON_KEY!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    
+    // Se sync=true ou não há itens no banco, buscar da API do iFood primeiro
+    const shouldSync = sync === 'true';
+    
+    if (shouldSync) {
+      console.log('🔄 [SYNC] Sincronizando itens com API do iFood...');
+      const productService = new IFoodProductService(supabaseUrl, supabaseKey);
+      const syncResult = await productService.getItemsFromIfood(
+        user_id as string, 
+        merchantId, 
+        category_id as string | undefined
+      );
+      
+      if (!syncResult.success) {
+        console.warn('⚠️ [SYNC] Falha ao sincronizar com iFood:', syncResult.error);
+        // Continuar e buscar do banco local mesmo assim
+      } else {
+        console.log(`✅ [SYNC] ${syncResult.total_products} itens sincronizados`);
+      }
+    }
+
+    // Buscar itens do banco local (atualizados ou não)
+    
+    let query = supabase
+      .from('products')
+      .select('*')
+      .eq('merchant_id', merchantId)
+      .eq('client_id', user_id as string);
+
+    // Se houver filtro de categoria, aplicar
+    if (category_id) {
+      console.log(`🔍 [FILTER] Aplicando filtro de categoria: ${category_id}`);
+      query = query.eq('ifood_category_id', category_id);
+    }
+
+    const { data: items, error } = await query.order('name', { ascending: true });
+
+    if (error) {
+      console.error('❌ [DATABASE] Error fetching items:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch items from database'
+      });
+    }
+
+    console.log(`📋 [RESULT] Returning ${items?.length || 0} items`);
+
+    // Return items
+    return res.json({
+      success: true,
+      data: items || [],
+      count: items?.length || 0,
+      synced: shouldSync,
+      message: `Found ${items?.length || 0} items${category_id ? ' for category ' + category_id : ''}`
+    });
+
+  } catch (error: any) {
+    console.error('❌ [ERROR] in GET /merchants/:merchantId/items:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error'
+    });
+  }
+});
+
+// Get Catalogs - Required for homologation
+app.get('/merchants/:merchantId/catalogs', async (req, res) => {
+  try {
+    const { merchantId } = req.params;
+    const { user_id } = req.query;
+
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'user_id is required'
+      });
+    }
+
+    console.log(`📋 [GET CATALOGS] Fetching catalogs for merchant: ${merchantId}`);
+
+    // Initialize services
+    const supabaseUrl = process.env.SUPABASE_URL!;
+    const supabaseKey = process.env.SUPABASE_ANON_KEY!;
+    const productService = new IFoodProductService(supabaseUrl, supabaseKey);
+
+    // Get catalogs from iFood API
+    const catalogsUrl = `https://merchant-api.ifood.com.br/catalog/v2.0/merchants/${merchantId}/catalogs`;
+    
+    // Get token first
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    const { data: tokenData } = await supabase
+      .from('ifood_tokens')
+      .select('access_token')
+      .eq('user_id', user_id)
+      .single();
+
+    if (!tokenData?.access_token) {
+      return res.status(401).json({
+        success: false,
+        error: 'Token de acesso não encontrado'
+      });
+    }
+
+    const axios = require('axios');
+    const catalogsResponse = await axios.get(catalogsUrl, {
+      headers: {
+        'Authorization': `Bearer ${tokenData.access_token}`,
+        'Accept': 'application/json'
+      }
+    });
+
+    const catalogs = catalogsResponse.data || [];
+    console.log(`✅ [GET CATALOGS] Found ${catalogs.length} catalogs`);
+
+    return res.json({
+      success: true,
+      data: catalogs,
+      count: catalogs.length,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error: any) {
+    console.error('❌ [GET CATALOGS] Error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error'
+    });
+  }
+});
+
+// Create or Update Item
+app.put('/merchants/:merchantId/items', async (req, res) => {
+  try {
+    const { merchantId } = req.params;
+    const { user_id, ...itemData } = req.body;
+
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'user_id is required'
+      });
+    }
+
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      return res.status(500).json({
+        success: false,
+        error: 'Missing Supabase configuration'
+      });
+    }
+
+    console.log(`🍔 [CREATE/UPDATE ITEM] Starting for merchant: ${merchantId}`);
+    const productService = new IFoodProductService(supabaseUrl, supabaseKey);
+    const result = await productService.createOrUpdateItem(user_id, merchantId, itemData);
+
+    if (result.success) {
+      return res.json(result);
+    } else {
+      return res.status(400).json(result);
+    }
+  } catch (error: any) {
+    console.error('❌ [CREATE/UPDATE ITEM] Error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error'
+    });
+  }
+});
+
+// Update Item Price
+app.patch('/merchants/:merchantId/items/price', async (req, res) => {
+  try {
+    const { merchantId } = req.params;
+    const { user_id, ...priceData } = req.body;
+
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'user_id is required'
+      });
+    }
+
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      return res.status(500).json({
+        success: false,
+        error: 'Missing Supabase configuration'
+      });
+    }
+
+    console.log(`💰 [UPDATE PRICE] Starting for item: ${priceData.itemId}`);
+    const productService = new IFoodProductService(supabaseUrl, supabaseKey);
+    const result = await productService.updateItemPrice(user_id, merchantId, priceData);
+
+    if (result.success) {
+      return res.json(result);
+    } else {
+      return res.status(400).json(result);
+    }
+  } catch (error: any) {
+    console.error('❌ [UPDATE PRICE] Error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error'
+    });
+  }
+});
+
+// Update Item Status
+app.patch('/merchants/:merchantId/items/status', async (req, res) => {
+  try {
+    const { merchantId } = req.params;
+    const { user_id, ...statusData } = req.body;
+
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'user_id is required'
+      });
+    }
+
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      return res.status(500).json({
+        success: false,
+        error: 'Missing Supabase configuration'
+      });
+    }
+
+    console.log(`🔄 [UPDATE STATUS] Starting for item: ${statusData.itemId}`);
+    const productService = new IFoodProductService(supabaseUrl, supabaseKey);
+    const result = await productService.updateItemStatus(user_id, merchantId, statusData);
+
+    if (result.success) {
+      return res.json(result);
+    } else {
+      return res.status(400).json(result);
+    }
+  } catch (error: any) {
+    console.error('❌ [UPDATE STATUS] Error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error'
+    });
+  }
+});
+
+// Update Option Price
+app.patch('/merchants/:merchantId/options/price', async (req, res) => {
+  try {
+    const { merchantId } = req.params;
+    const { user_id, ...priceData } = req.body;
+
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'user_id is required'
+      });
+    }
+
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      return res.status(500).json({
+        success: false,
+        error: 'Missing Supabase configuration'
+      });
+    }
+
+    const productService = new IFoodProductService(supabaseUrl, supabaseKey);
+    const result = await productService.updateOptionPrice(user_id, merchantId, priceData);
+
+    if (result.success) {
+      return res.json(result);
+    } else {
+      return res.status(400).json(result);
+    }
+  } catch (error: any) {
+    console.error('❌ [UPDATE OPTION PRICE] Error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error'
+    });
+  }
+});
+
+// Update Option Status
+app.patch('/merchants/:merchantId/options/status', async (req, res) => {
+  try {
+    const { merchantId } = req.params;
+    const { user_id, ...statusData } = req.body;
+
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'user_id is required'
+      });
+    }
+
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      return res.status(500).json({
+        success: false,
+        error: 'Missing Supabase configuration'
+      });
+    }
+
+    const productService = new IFoodProductService(supabaseUrl, supabaseKey);
+    const result = await productService.updateOptionStatus(user_id, merchantId, statusData);
+
+    if (result.success) {
+      return res.json(result);
+    } else {
+      return res.status(400).json(result);
+    }
+  } catch (error: any) {
+    console.error('❌ [UPDATE OPTION STATUS] Error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error'
+    });
+  }
+});
+
+// Upload Image
+app.post('/merchants/:merchantId/image/upload', async (req, res) => {
+  try {
+    const { merchantId } = req.params;
+    const { user_id, image } = req.body;
+
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'user_id is required'
+      });
+    }
+
+    if (!image) {
+      return res.status(400).json({
+        success: false,
+        error: 'image data is required (base64 format)'
+      });
+    }
+
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      return res.status(500).json({
+        success: false,
+        error: 'Missing Supabase configuration'
+      });
+    }
+
+    console.log(`📸 [UPLOAD IMAGE] Starting for merchant: ${merchantId}`);
+    const productService = new IFoodProductService(supabaseUrl, supabaseKey);
+    const result = await productService.uploadImage(user_id, merchantId, { image });
+
+    if (result.success) {
+      return res.json(result);
+    } else {
+      return res.status(400).json(result);
+    }
+  } catch (error: any) {
+    console.error('❌ [UPLOAD IMAGE] Error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error'
+    });
+  }
+});
+
+// Bulk Item Ingestion
+app.post('/item/ingestion/:merchantId', async (req, res) => {
+  try {
+    const { merchantId } = req.params;
+    const { reset } = req.query;
+    const { user_id, items } = req.body;
+
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'user_id is required'
+      });
+    }
+
+    if (!items || !Array.isArray(items)) {
+      return res.status(400).json({
+        success: false,
+        error: 'items array is required'
+      });
+    }
+
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      return res.status(500).json({
+        success: false,
+        error: 'Missing Supabase configuration'
+      });
+    }
+
+    console.log(`📦 [BULK INGESTION] Starting for merchant: ${merchantId}, items: ${items.length}`);
+    const productService = new IFoodProductService(supabaseUrl, supabaseKey);
+    const result = await productService.bulkItemIngestion(user_id, merchantId, items, reset === 'true');
+
+    if (result.success) {
+      return res.json(result);
+    } else {
+      return res.status(400).json(result);
+    }
+  } catch (error: any) {
+    console.error('❌ [BULK INGESTION] Error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error'
     });
   }
 });
