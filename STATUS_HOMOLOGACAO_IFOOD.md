@@ -37,7 +37,7 @@
 
 ### 🔴 **5. PICKING - 0% IMPLEMENTADO**
 **Status**: 🚨 **BLOQUEADOR CRÍTICO**
-
+- Prazo: **7 dias**
 #### Endpoints Pendentes:
 - ❌ `POST /picking/v1.0/orders/{orderId}/startSeparation`
 - ❌ `POST /orders/{id}/items`  
@@ -52,10 +52,12 @@
 ## 🟡 **MÓDULOS COMPLEMENTARES**
 
 ### 🟡 **6. PROMOÇÕES - 0% IMPLEMENTADO**
+-Prazo: **4 dias**
 - 3 endpoints pendentes
 - Prioridade média para homologação
 
-### 🟡 **7. SHIPPING - 0% IMPLEMENTADO**  
+### 🟡 **7. SHIPPING - 0% IMPLEMENTADO**
+-Prazo: **8 dias**  
 - 8 endpoints pendentes
 - Prioridade baixa para homologação
 
