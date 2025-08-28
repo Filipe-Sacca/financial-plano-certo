@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guia de Implementação CORRIGIDO - Módulo de Picking iFood</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f8f9fa;
+        }
+        
+        article {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+            margin-bottom: 30px;
+        }
+        
+        h2 {
+            color: #34495e;
+            border-bottom: 2px solid #e8f4f8;
+            padding-bottom: 8px;
+            margin-top: 35px;
+            margin-bottom: 20px;
+        }
+        
+        h3 {
+            color: #2c3e50;
+            margin-top: 25px;
+            margin-bottom: 15px;
+        }
+        
+        .critical-section {
+            background: #ffebee;
+            border-left: 4px solid #e74c3c;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        
+        .success-section {
+            background: #e8f5e8;
+            border-left: 4px solid #27ae60;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        
+        .info-section {
+            background: #e8f4f8;
+            border-left: 4px solid #3498db;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        
+        .warning-section {
+            background: #fef9e7;
+            border-left: 4px solid #f39c12;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        
+        .correction-section {
+            background: #e1f5fe;
+            border-left: 4px solid #00bcd4;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        
+        code {
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Courier New', monospace;
+            font-size: 14px;
+        }
+        
+        pre {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-left: 4px solid #007acc;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+        
+        .endpoint {
+            background: #f8f9fa;
+            border: 2px solid #dee2e6;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+        }
+        
+        .endpoint-header {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+        
+        .method {
+            background: #28a745;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        
+        .method.post { background: #28a745; }
+        .method.patch { background: #ffc107; color: #333; }
+        .method.delete { background: #dc3545; }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        
+        th, td {
+            border: 1px solid #dee2e6;
+            padding: 12px;
+            text-align: left;
+        }
+        
+        th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        tbody tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+        
+        .typescript-code {
+            background: #1a202c;
+            color: #e2e8f0;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.4;
+            margin: 15px 0;
+            overflow-x: auto;
+        }
+        
+        .api-example {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+        
+        .api-example h4 {
+            color: white;
+            margin-top: 0;
+        }
+        
+        ul li {
+            margin-bottom: 8px;
+        }
+    </style>
+</head>
+<body>
+    <article>
+        <header>
+            <h1>🔧 Guia de Implementação CORRIGIDO - Módulo de Picking iFood</h1>
+        </header>
+        
+        <main>
+            <div class="correction-section">
+                <h3>🔄 CORREÇÕES IMPORTANTES</h3>
+                <p><strong>1. Identificação de Produtos:</strong> Usar <code>product_id</code> ao invés de <code>ean</code></p>
+                <p><strong>2. Estrutura do Body:</strong> O exemplo é apenas referência - pode conter parâmetros adicionais</p>
+                <p><strong>3. Flexibilidade:</strong> Sistema deve suportar campos extras não especificados</p>
+            </div>
+
+            <section>
+                <h2>📋 Análise CORRIGIDA do Body</h2>
+                
+                <div class="api-example">
+                    <h4>🔍 Estrutura Real CORRIGIDA - POST /orders/{id}/items</h4>
+                    <pre>{
+  "quantity": 0,
+  "product_id": "string",        // CORREÇÃO: usar product_id
+  "replacedUniqueId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  // ... outros parâmetros possíveis
+}</pre>
+                </div>
+
+                <div class="info-section">
+                    <h3>📊 Interpretação CORRIGIDA dos Campos</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Campo</th>
+                                <th>Tipo</th>
+                                <th>Descrição</th>
+                                <th>Caso de Uso</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>quantity</code></td>
+                                <td>number</td>
+                                <td>Quantidade do item a ser adicionado</td>
+                                <td>Adicionar múltiplas unidades do mesmo produto</td>
+                            </tr>
+                            <tr>
+                                <td><code>product_id</code></td>
+                                <td>string</td>
+                                <td>ID único do produto no sistema iFood</td>
+                                <td>Identificar produto específico no catálogo</td>
+                            </tr>
+                            <tr>
+                                <td><code>replacedUniqueId</code></td>
+                                <td>string (UUID)</td>
+                                <td>ID único do item sendo substituído</td>
+                                <td>Substituição de produtos durante separação</td>
+                            </tr>
+                            <tr>
+                                <td><code>...</code></td>
+                                <td>flexible</td>
+                                <td>Parâmetros adicionais não especificados</td>
+                                <td>Extensibilidade futura da API</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="warning-section">
+                    <h3>⚠️ Insights ATUALIZADOS</h3>
+                    <ul>
+                        <li><strong>Identificação por product_id:</strong> Produtos são identificados pelo ID interno do sistema</li>
+                        <li><strong>Sistema de substituição:</strong> Campo <code>replacedUniqueId</code> permite substituir produtos</li>
+                        <li><strong>Estrutura flexível:</strong> Body pode conter campos adicionais além do exemplo</li>
+                        <li><strong>Extensibilidade:</strong> Sistema deve ser preparado para novos parâmetros</li>
+                    </ul>
+                </div>
+            </section>
+
+            <section>
+                <h2>💻 Definições TypeScript CORRIGIDAS</h2>
+                
+                <div class="typescript-code">
+// types/PickingTypes.ts - VERSÃO CORRIGIDA
+export interface PickingSeparationStatus {
+  orderId: string;
+  status: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
+  startedAt?: Date;
+  completedAt?: Date;
+  modifiedItems: PickingModifiedItem[];
+}
+
+export interface PickingModifiedItem {
+  uniqueId: string;
+  action: 'ADDED' | 'UPDATED' | 'REMOVED' | 'REPLACED';
+  originalItem?: PickingItemData;
+  newItem?: PickingItemData;
+  timestamp: Date;
+}
+
+export interface PickingItemData {
+  uniqueId: string;
+  product_id: string;           // CORREÇÃO: usar product_id
+  quantity: number;
+  name?: string;
+  price?: number;
+  replacedUniqueId?: string;
+  // Campos adicionais flexíveis
+  [key: string]: any;           // CORREÇÃO: suportar campos extras
+}
+
+// types/PickingRequestTypes.ts - VERSÃO CORRIGIDA
+export interface StartSeparationRequest {
+  orderId: string;
+  // Parâmetros adicionais podem existir
+  [key: string]: any;
+}
+
+export interface AddItemRequest {
+  quantity: number;
+  product_id: string;           // CORREÇÃO: usar product_id
+  replacedUniqueId?: string;
+  // Campos adicionais flexíveis
+  [key: string]: any;           // CORREÇÃO: extensibilidade
+}
+
+export interface UpdateItemRequest {
+  quantity?: number;
+  product_id?: string;          // CORREÇÃO: usar product_id
+  replacedUniqueId?: string;
+  // Campos adicionais flexíveis
+  [key: string]: any;           // CORREÇÃO: extensibilidade
+}
+
+export interface EndSeparationRequest {
+  orderId: string;
+  finalItems?: PickingItemData[];
+  // Parâmetros adicionais podem existir
+  [key: string]: any;
+}
+
+// types/PickingResponseTypes.ts - SEM ALTERAÇÕES
+export interface PickingApiResponse&lt;T = any&gt; {
+  success: boolean;
+  data?: T;
+  error?: {
+    code: string;
+    message: string;
+    details?: any;
+  };
+  timestamp: Date;
+}
+
+export interface StartSeparationResponse {
+  orderId: string;
+  separationId: string;
+  status: string;
+  allowedOperations: string[];
+}
+
+export interface ItemOperationResponse {
+  uniqueId: string;
+  operation: string;
+  status: 'SUCCESS' | 'FAILED' | 'PENDING_VALIDATION';
+  validationErrors?: string[];
+}
+                </div>
+            </section>
+
+            <section>
+                <h2>🔗 Especificação CORRIGIDA dos Endpoints</h2>
+                
+                <div class="endpoint">
+                    <div class="endpoint-header">
+                        <span class="method post">POST</span> 
+                        <code>/orders/{id}/items</code>
+                    </div>
+                    <p><strong>Função:</strong> Adicionar item ao pedido durante separação</p>
+                    <p><strong>Body CORRIGIDO:</strong></p>
+                    <pre>{
+  "quantity": 2,
+  "product_id": "abc123-product-id",    // CORREÇÃO: usar product_id
+  "replacedUniqueId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  // Campos adicionais possíveis:
+  "notes": "Produto substituído por falta de estoque",
+  "weight": 450,
+  "price_override": 12.50
+}</pre>
+                    <p><strong>Cenários de Uso ATUALIZADOS:</strong></p>
+                    <ul>
+                        <li><strong>Adicionar novo item:</strong> <code>quantity > 0</code>, <code>product_id</code> válido, sem <code>replacedUniqueId</code></li>
+                        <li><strong>Substituir item:</strong> <code>quantity > 0</code>, <code>product_id</code> do substituto, com <code>replacedUniqueId</code></li>
+                        <li><strong>Aumentar quantidade:</strong> Adicionar mesmo <code>product_id</code> com quantidade adicional</li>
+                    </ul>
+                </div>
+
+                <div class="endpoint">
+                    <div class="endpoint-header">
+                        <span class="method patch">PATCH</span> 
+                        <code>/orders/{id}/items/{uniqueId}</code>
+                    </div>
+                    <p><strong>Função:</strong> Editar item existente no pedido</p>
+                    <p><strong>Body CORRIGIDO:</strong></p>
+                    <pre>{
+  "quantity": 1,
+  "product_id": "xyz789-product-id",    // CORREÇÃO: usar product_id
+  "replacedUniqueId": "optional-uuid",
+  // Campos adicionais flexíveis aceitos
+}</pre>
+                </div>
+            </section>
+
+            <section>
+                <h2>🔧 Serviço CORRIGIDO - PickingService.ts</h2>
+                
+                <div class="typescript-code">
+// services/PickingService.ts - VERSÃO CORRIGIDA
+import { AddItemRequest, UpdateItemRequest, PickingApiResponse } from '../types/PickingRequestTypes';
+
+export class PickingService {
+  private baseUrl = 'https://merchant-api.ifood.com.br';
+  private token: string;
+  private merchantId: string;
+
+  constructor(token: string, merchantId: string) {
+    this.token = token;
+    this.merchantId = merchantId;
+  }
+
+  // MÉTODO CORRIGIDO - usar product_id
+  async addItemToOrder(orderId: string, itemData: AddItemRequest): Promise&lt;PickingApiResponse&gt; {
+    try {
+      // Validação CORRIGIDA
+      if (!itemData.product_id) {
+        throw new Error('product_id é obrigatório');
+      }
+
+      // Validar se product_id existe no catálogo
+      await this.validateProductId(itemData.product_id);
+
+      const response = await fetch(`${this.baseUrl}/orders/${orderId}/items`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.token}`,
+          'Content-Type': 'application/json',
+          'x-merchant-id': this.merchantId
+        },
+        body: JSON.stringify(itemData)  // CORREÇÃO: enviar todos os campos
+      });
+
+      const data = await response.json();
+      
+      return {
+        success: response.ok,
+        data: data,
+        timestamp: new Date()
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: {
+          code: 'ADD_ITEM_ERROR',
+          message: error.message,
+          details: error
+        },
+        timestamp: new Date()
+      };
+    }
+  }
+
+  // MÉTODO CORRIGIDO - validar product_id ao invés de EAN
+  private async validateProductId(productId: string): Promise&lt;boolean&gt; {
+    // Integrar com serviço de catálogo para validar product_id
+    // return await catalogService.validateProductId(productId);
+    
+    // Por enquanto, validação básica
+    if (!productId || productId.trim().length === 0) {
+      throw new Error('product_id inválido');
+    }
+    
+    return true;
+  }
+
+  // MÉTODO CORRIGIDO - aceitar campos flexíveis
+  async updateOrderItem(
+    orderId: string, 
+    uniqueId: string, 
+    updates: UpdateItemRequest
+  ): Promise&lt;PickingApiResponse&gt; {
+    try {
+      // Validar product_id se fornecido
+      if (updates.product_id) {
+        await this.validateProductId(updates.product_id);
+      }
+
+      const response = await fetch(`${this.baseUrl}/orders/${orderId}/items/${uniqueId}`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${this.token}`,
+          'Content-Type': 'application/json',
+          'x-merchant-id': this.merchantId
+        },
+        body: JSON.stringify(updates)  // CORREÇÃO: enviar todos os campos
+      });
+
+      const data = await response.json();
+      
+      return {
+        success: response.ok,
+        data: data,
+        timestamp: new Date()
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: {
+          code: 'UPDATE_ITEM_ERROR',
+          message: error.message,
+          details: error
+        },
+        timestamp: new Date()
+      };
+    }
+  }
+
+  // Outros métodos permanecem iguais...
+  async startSeparation(orderId: string): Promise&lt;PickingApiResponse&gt; { /* ... */ }
+  async removeOrderItem(orderId: string, uniqueId: string): Promise&lt;PickingApiResponse&gt; { /* ... */ }
+  async endSeparation(orderId: string): Promise&lt;PickingApiResponse&gt; { /* ... */ }
+}
+                </div>
+            </section>
+
+            <section>
+                <h2>🔍 Casos de Uso CORRIGIDOS</h2>
+                
+                <div class="api-example">
+                    <h4>🛒 Cenário 1: Falta de Estoque (CORRIGIDO)</h4>
+                    <p><strong>Situação:</strong> Cliente pediu 3 unidades, só tem 2 em estoque</p>
+                    <ol>
+                        <li>Iniciar separação: <code>POST /startSeparation</code></li>
+                        <li>Atualizar quantidade: <code>PATCH /orders/{id}/items/{uniqueId}</code></li>
+                        <pre>{
+  "quantity": 2,
+  "notes": "Ajuste por falta de estoque"
+}</pre>
+                        <li>Finalizar: <code>POST /endSeparation</code></li>
+                    </ol>
+                </div>
+
+                <div class="api-example">
+                    <h4>🔄 Cenário 2: Substituição de Produto (CORRIGIDO)</h4>
+                    <p><strong>Situação:</strong> Produto A não disponível, substituir por produto B</p>
+                    <ol>
+                        <li>Iniciar separação: <code>POST /startSeparation</code></li>
+                        <li>Adicionar substituto: <code>POST /orders/{id}/items</code></li>
+                        <pre>{
+  "quantity": 1,
+  "product_id": "produto-b-id",           // CORREÇÃO: usar product_id
+  "replacedUniqueId": "id-produto-A",
+  "substitution_reason": "Produto indisponível"
+}</pre>
+                        <li>Finalizar: <code>POST /endSeparation</code></li>
+                    </ol>
+                </div>
+
+                <div class="api-example">
+                    <h4>⚖️ Cenário 3: Ajuste de Peso (CORRIGIDO)</h4>
+                    <p><strong>Situação:</strong> Cliente pediu 500g, produto pesou 480g</p>
+                    <ol>
+                        <li>Iniciar separação: <code>POST /startSeparation</code></li>
+                        <li>Adicionar produto com peso real: <code>POST /orders/{id}/items</code></li>
+                        <pre>{
+  "quantity": 480,
+  "product_id": "mesmo-produto-id",       // CORREÇÃO: usar product_id
+  "replacedUniqueId": "id-item-original",
+  "actual_weight": 480,
+  "original_weight": 500
+}</pre>
+                        <li>Finalizar: <code>POST /endSeparation</code></li>
+                    </ol>
+                </div>
+            </section>
+
+            <section>
+                <h2>🔧 Validações CORRIGIDAS</h2>
+                
+                <div class="critical-section">
+                    <h3>🚨 Validações Atualizadas</h3>
+                    <ul>
+                        <li><strong>product_id obrigatório:</strong> Sempre validar se product_id existe no catálogo</li>
+                        <li><strong>Flexibilidade de campos:</strong> Aceitar campos adicionais sem validação rígida</li>
+                        <li><strong>Integração com catálogo:</strong> Usar serviços existentes para validar product_id</li>
+                        <li><strong>Backward compatibility:</strong> Sistema deve ser compatível com futuras extensões da API</li>
+                    </ul>
+                </div>
+
+                <div class="info-section">
+                    <h3>📋 Integração com Catálogo</h3>
+                    <pre>// Exemplo de integração com módulo de catálogo existente
+import { CatalogService } from '../catalog/services/CatalogService';
+
+async validateProductId(productId: string): Promise&lt;boolean&gt; {
+  const catalogService = new CatalogService(this.token, this.merchantId);
+  const product = await catalogService.getProductById(productId);
+  
+  if (!product) {
+    throw new Error(`Produto com ID ${productId} não encontrado no catálogo`);
+  }
+  
+  if (product.status !== 'AVAILABLE') {
+    throw new Error(`Produto ${productId} não está disponível`);
+  }
+  
+  return true;
+}</pre>
+                </div>
+            </section>
+
+            <section>
+                <h2>✅ Checklist ATUALIZADO</h2>
+                
+                <div class="success-section">
+                    <h3>📋 Itens Corrigidos</h3>
+                    <ul>
+                        <li>✅ <strong>product_id:</strong> Substituir todas as referências de <code>ean</code> por <code>product_id</code></li>
+                        <li>✅ <strong>Flexibilidade:</strong> Interfaces com <code>[key: string]: any</code> para extensibilidade</li>
+                        <li>✅ <strong>Validações:</strong> Integrar com serviço de catálogo para validar <code>product_id</code></li>
+                        <li>✅ <strong>Casos de uso:</strong> Exemplos atualizados com <code>product_id</code></li>
+                        <li>✅ <strong>Código TypeScript:</strong> Todas as definições corrigidas</li>
+                    </ul>
+                </div>
+            </section>
+
+            <section>
+                <h2>🚀 Próximos Passos ATUALIZADOS</h2>
+                
+                <div class="info-section">
+                    <h3>📈 Plano de Implementação Corrigido</h3>
+                    <ol>
+                        <li><strong>Estrutura Base:</strong> Criar interfaces flexíveis com <code>product_id</code></li>
+                        <li><strong>Validações:</strong> Implementar integração com módulo de catálogo existente</li>
+                        <li><strong>Serviços:</strong> PickingService com validação de <code>product_id</code></li>
+                        <li><strong>Endpoints:</strong> Aceitar campos flexíveis nos requests</li>
+                        <li><strong>Frontend:</strong> Interface para buscar produtos por <code>product_id</code></li>
+                        <li><strong>Testes:</strong> Validar com diferentes combinações de parâmetros</li>
+                    </ol>
+                    <p><strong>Estimativa mantida:</strong> 10-16 dias (sem impacto nas correções)</p>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <div class="correction-section">
+                <h3>📋 Resumo das Correções</h3>
+                <p><strong>1. product_id:</strong> Todas as referências atualizadas de <code>ean</code> para <code>product_id</code></p>
+                <p><strong>2. Flexibilidade:</strong> Interfaces preparadas para campos adicionais com <code>[key: string]: any</code></p>
+                <p><strong>3. Validações:</strong> Integração com módulo de catálogo para validar <code>product_id</code></p>
+                <p><strong>4. Extensibilidade:</strong> Sistema preparado para futuras extensões da API iFood</p>
+                <p><strong>Documentação corrigida e pronta para implementação! ✅</strong></p>
+            </div>
+        </footer>
+    </article>
+</body>
+</html>

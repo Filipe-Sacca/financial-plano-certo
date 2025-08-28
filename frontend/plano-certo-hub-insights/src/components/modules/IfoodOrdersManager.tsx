@@ -18,7 +18,8 @@ import {
   AlertCircle,
   Activity,
   Check,
-  X
+  X,
+  Package
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -26,6 +27,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
+import PickingModal from './PickingModal';
 
 interface PollingStatus {
   isRunning: boolean;
@@ -71,6 +73,8 @@ const IfoodOrdersManager: React.FC = () => {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedMerchant, setSelectedMerchant] = useState<string>('577cb3b1-5845-4fbc-a219-8cd3939cb9ea');
+  const [pickingModalOpen, setPickingModalOpen] = useState(false);
+  const [selectedOrderForPicking, setSelectedOrderForPicking] = useState<string>('');
   const userId = 'c1488646-aca8-4220-aacc-00e7ae3d6490'; // Real user ID from database
   const { toast } = useToast();
 
@@ -217,6 +221,12 @@ const IfoodOrdersManager: React.FC = () => {
       title: "🔔 Ação Pendente", 
       description: `Cancelar pedido ${orderId.substring(0, 8)}... (funcionalidade em desenvolvimento)`
     });
+  };
+
+  // Open picking modal
+  const handleOpenPicking = (orderId: string) => {
+    setSelectedOrderForPicking(orderId);
+    setPickingModalOpen(true);
   };
 
   return (
@@ -418,6 +428,20 @@ const IfoodOrdersManager: React.FC = () => {
                             </Button>
                           </>
                         )}
+                        
+                        {/* Botão de Picking para pedidos em preparação */}
+                        {(order.status === 'PREPARING' || order.status === 'CONFIRMED') && (
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            className="bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
+                            onClick={() => handleOpenPicking(order.ifood_order_id)}
+                          >
+                            <Package className="h-3 w-3 mr-1" />
+                            Separação
+                          </Button>
+                        )}
+                        
                         <Button size="sm" variant="outline">
                           <Eye className="h-3 w-3 mr-1" />
                           Ver
@@ -520,6 +544,14 @@ const IfoodOrdersManager: React.FC = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Modal de Picking */}
+      <PickingModal
+        isOpen={pickingModalOpen}
+        onClose={() => setPickingModalOpen(false)}
+        orderId={selectedOrderForPicking}
+        userId={userId}
+      />
     </div>
   );
 };

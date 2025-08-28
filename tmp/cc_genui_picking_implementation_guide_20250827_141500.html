@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guia de Implementação - Módulo de Picking iFood</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f8f9fa;
+        }
+        
+        article {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+            margin-bottom: 30px;
+        }
+        
+        h2 {
+            color: #34495e;
+            border-bottom: 2px solid #e8f4f8;
+            padding-bottom: 8px;
+            margin-top: 35px;
+            margin-bottom: 20px;
+        }
+        
+        h3 {
+            color: #2c3e50;
+            margin-top: 25px;
+            margin-bottom: 15px;
+        }
+        
+        .critical-section {
+            background: #ffebee;
+            border-left: 4px solid #e74c3c;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        
+        .success-section {
+            background: #e8f5e8;
+            border-left: 4px solid #27ae60;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        
+        .info-section {
+            background: #e8f4f8;
+            border-left: 4px solid #3498db;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        
+        .warning-section {
+            background: #fef9e7;
+            border-left: 4px solid #f39c12;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        
+        code {
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Courier New', monospace;
+            font-size: 14px;
+        }
+        
+        pre {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-left: 4px solid #007acc;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+        
+        .endpoint {
+            background: #f8f9fa;
+            border: 2px solid #dee2e6;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+        }
+        
+        .endpoint-header {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+        
+        .method {
+            background: #28a745;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        
+        .method.post { background: #28a745; }
+        .method.patch { background: #ffc107; color: #333; }
+        .method.delete { background: #dc3545; }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        
+        th, td {
+            border: 1px solid #dee2e6;
+            padding: 12px;
+            text-align: left;
+        }
+        
+        th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        tbody tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+        
+        .implementation-step {
+            background: #ffffff;
+            border: 2px solid #28a745;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 10px 0;
+            position: relative;
+        }
+        
+        .implementation-step::before {
+            content: counter(step-counter);
+            counter-increment: step-counter;
+            background: #28a745;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: absolute;
+            top: -15px;
+            left: 15px;
+            font-weight: bold;
+        }
+        
+        .implementation-container {
+            counter-reset: step-counter;
+        }
+        
+        .file-structure {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.4;
+            margin: 15px 0;
+        }
+        
+        .typescript-code {
+            background: #1a202c;
+            color: #e2e8f0;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.4;
+            margin: 15px 0;
+            overflow-x: auto;
+        }
+        
+        .api-example {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+        
+        .api-example h4 {
+            color: white;
+            margin-top: 0;
+        }
+        
+        ul li {
+            margin-bottom: 8px;
+        }
+        
+        .checklist {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+        }
+        
+        .checklist ul {
+            list-style: none;
+            padding-left: 0;
+        }
+        
+        .checklist li {
+            margin: 8px 0;
+        }
+        
+        .checklist li::before {
+            content: "☐ ";
+            color: #6c757d;
+            font-weight: bold;
+            margin-right: 5px;
+        }
+    </style>
+</head>
+<body>
+    <article>
+        <header>
+            <h1>🔧 Guia de Implementação - Módulo de Picking iFood</h1>
+        </header>
+        
+        <main>
+            <div class="critical-section">
+                <h3>🎯 Objetivo da Implementação</h3>
+                <p><strong>Meta:</strong> Implementar todos os 5 endpoints obrigatórios do módulo de Picking para desbloquear a homologação oficial do iFood.</p>
+                <p><strong>Baseado em:</strong> Estrutura real do body fornecido para <code>POST /orders/{id}/items</code></p>
+            </div>
+
+            <section>
+                <h2>📋 Análise do Body Fornecido</h2>
+                
+                <div class="api-example">
+                    <h4>🔍 Estrutura Real - POST /orders/{id}/items</h4>
+                    <pre>{
+  "quantity": 0,
+  "ean": "string",
+  "replacedUniqueId": "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+}</pre>
+                </div>
+
+                <div class="info-section">
+                    <h3>📊 Interpretação dos Campos</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Campo</th>
+                                <th>Tipo</th>
+                                <th>Descrição</th>
+                                <th>Caso de Uso</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>quantity</code></td>
+                                <td>number</td>
+                                <td>Quantidade do item a ser adicionado</td>
+                                <td>Adicionar múltiplas unidades do mesmo produto</td>
+                            </tr>
+                            <tr>
+                                <td><code>ean</code></td>
+                                <td>string</td>
+                                <td>Código de barras EAN do produto</td>
+                                <td>Identificar produto específico no catálogo</td>
+                            </tr>
+                            <tr>
+                                <td><code>replacedUniqueId</code></td>
+                                <td>string (UUID)</td>
+                                <td>ID único do item sendo substituído</td>
+                                <td>Substituição de produtos durante separação</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="warning-section">
+                    <h3>⚠️ Insights Importantes</h3>
+                    <ul>
+                        <li><strong>Substituição de Produtos:</strong> O campo <code>replacedUniqueId</code> indica que o endpoint suporta substituição de itens</li>
+                        <li><strong>Identificação por EAN:</strong> Produtos são identificados por código de barras, não por ID interno</li>
+                        <li><strong>Quantidade Flexível:</strong> Permite adicionar qualquer quantidade, incluindo zero (remoção efetiva)</li>
+                    </ul>
+                </div>
+            </section>
+
+            <section>
+                <h2>🏗️ Arquitetura de Implementação</h2>
+                
+                <div class="file-structure">
+services/ifood-token-service/src/picking/
+├── 📁 types/
+│   ├── PickingTypes.ts                 # Interfaces principais
+│   ├── PickingRequestTypes.ts          # Tipos de requisições
+│   └── PickingResponseTypes.ts         # Tipos de respostas
+├── 📁 services/
+│   ├── PickingService.ts               # Serviço principal
+│   ├── PickingValidationService.ts     # Validações
+│   └── PickingLoggerService.ts         # Logs específicos
+├── 📁 utils/
+│   ├── PickingHelpers.ts               # Funções auxiliares
+│   ├── PickingConstants.ts             # Constantes
+│   └── PickingErrorHandler.ts          # Tratamento de erros
+├── 📁 controllers/
+│   └── PickingController.ts            # Controladores REST
+├── 📁 __tests__/
+│   ├── PickingService.test.ts          # Testes unitários
+│   └── picking.integration.test.ts     # Testes integração
+└── README.md                           # Documentação do módulo
+                </div>
+            </section>
+
+            <section>
+                <h2>💻 Definições TypeScript</h2>
+                
+                <div class="typescript-code">
+// types/PickingTypes.ts
+export interface PickingSeparationStatus {
+  orderId: string;
+  status: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
+  startedAt?: Date;
+  completedAt?: Date;
+  modifiedItems: PickingModifiedItem[];
+}
+
+export interface PickingModifiedItem {
+  uniqueId: string;
+  action: 'ADDED' | 'UPDATED' | 'REMOVED' | 'REPLACED';
+  originalItem?: PickingItemData;
+  newItem?: PickingItemData;
+  timestamp: Date;
+}
+
+export interface PickingItemData {
+  uniqueId: string;
+  ean: string;
+  quantity: number;
+  name?: string;
+  price?: number;
+  replacedUniqueId?: string;
+}
+
+// types/PickingRequestTypes.ts
+export interface StartSeparationRequest {
+  orderId: string;
+}
+
+export interface AddItemRequest {
+  quantity: number;
+  ean: string;
+  replacedUniqueId?: string;
+}
+
+export interface UpdateItemRequest {
+  quantity?: number;
+  ean?: string;
+  replacedUniqueId?: string;
+}
+
+export interface EndSeparationRequest {
+  orderId: string;
+  finalItems?: PickingItemData[];
+}
+
+// types/PickingResponseTypes.ts
+export interface PickingApiResponse&lt;T = any&gt; {
+  success: boolean;
+  data?: T;
+  error?: {
+    code: string;
+    message: string;
+    details?: any;
+  };
+  timestamp: Date;
+}
+
+export interface StartSeparationResponse {
+  orderId: string;
+  separationId: string;
+  status: string;
+  allowedOperations: string[];
+}
+
+export interface ItemOperationResponse {
+  uniqueId: string;
+  operation: string;
+  status: 'SUCCESS' | 'FAILED' | 'PENDING_VALIDATION';
+  validationErrors?: string[];
+}
+                </div>
+            </section>
+
+            <section>
+                <h2>🔗 Especificação Completa dos Endpoints</h2>
+                
+                <div class="endpoint">
+                    <div class="endpoint-header">
+                        <span class="method post">POST</span> 
+                        <code>/picking/v1.0/orders/{orderId}/startSeparation</code>
+                    </div>
+                    <p><strong>Função:</strong> Iniciar processo de separação</p>
+                    <p><strong>Headers:</strong></p>
+                    <pre>Authorization: Bearer {token}
+Content-Type: application/json
+x-merchant-id: {merchantId}</pre>
+                    <p><strong>Parâmetros de URL:</strong></p>
+                    <ul>
+                        <li><code>orderId</code> (string) - ID único do pedido</li>
+                    </ul>
+                    <p><strong>Body:</strong> Vazio ou configurações opcionais</p>
+                    <p><strong>Response Esperado:</strong></p>
+                    <pre>{
+  "separationId": "uuid",
+  "status": "IN_PROGRESS",
+  "allowedOperations": ["ADD_ITEM", "UPDATE_ITEM", "REMOVE_ITEM"]
+}</pre>
+                </div>
+
+                <div class="endpoint">
+                    <div class="endpoint-header">
+                        <span class="method post">POST</span> 
+                        <code>/orders/{id}/items</code>
+                    </div>
+                    <p><strong>Função:</strong> Adicionar item ao pedido durante separação</p>
+                    <p><strong>Body:</strong></p>
+                    <pre>{
+  "quantity": 2,
+  "ean": "7894900011517",
+  "replacedUniqueId": "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+}</pre>
+                    <p><strong>Cenários de Uso:</strong></p>
+                    <ul>
+                        <li><strong>Adicionar novo item:</strong> <code>quantity > 0</code>, sem <code>replacedUniqueId</code></li>
+                        <li><strong>Substituir item:</strong> <code>quantity > 0</code>, com <code>replacedUniqueId</code></li>
+                        <li><strong>Aumentar quantidade:</strong> Adicionar mesmo EAN com quantidade adicional</li>
+                    </ul>
+                </div>
+
+                <div class="endpoint">
+                    <div class="endpoint-header">
+                        <span class="method patch">PATCH</span> 
+                        <code>/orders/{id}/items/{uniqueId}</code>
+                    </div>
+                    <p><strong>Função:</strong> Editar item existente no pedido</p>
+                    <p><strong>Body Provável:</strong></p>
+                    <pre>{
+  "quantity": 1,
+  "ean": "7894900011517",
+  "replacedUniqueId": "optional-uuid"
+}</pre>
+                    <p><strong>Cenários de Uso:</strong></p>
+                    <ul>
+                        <li><strong>Alterar quantidade:</strong> Modificar campo <code>quantity</code></li>
+                        <li><strong>Trocar produto:</strong> Alterar <code>ean</code> e opcionalmente <code>replacedUniqueId</code></li>
+                    </ul>
+                </div>
+
+                <div class="endpoint">
+                    <div class="endpoint-header">
+                        <span class="method delete">DELETE</span> 
+                        <code>/orders/{id}/items/{uniqueId}</code>
+                    </div>
+                    <p><strong>Função:</strong> Remover item do pedido</p>
+                    <p><strong>Body:</strong> Vazio (operação DELETE padrão)</p>
+                    <p><strong>Parâmetros:</strong></p>
+                    <ul>
+                        <li><code>id</code> - ID do pedido</li>
+                        <li><code>uniqueId</code> - ID único do item a ser removido</li>
+                    </ul>
+                </div>
+
+                <div class="endpoint">
+                    <div class="endpoint-header">
+                        <span class="method post">POST</span> 
+                        <code>/endSeparation</code>
+                    </div>
+                    <p><strong>Função:</strong> Finalizar separação e aplicar alterações</p>
+                    <p><strong>Body Estimado:</strong></p>
+                    <pre>{
+  "orderId": "string",
+  "separationId": "uuid",
+  "finalValidation": true
+}</pre>
+                    <p><strong>Importante:</strong> Este endpoint pode falhar devido a validações de negócio</p>
+                </div>
+            </section>
+
+            <section>
+                <h2>🎯 Plano de Implementação</h2>
+                
+                <div class="implementation-container">
+                    <div class="implementation-step">
+                        <h4>Estrutura Base</h4>
+                        <p><strong>Arquivos a criar:</strong></p>
+                        <ul>
+                            <li>Todas as interfaces TypeScript baseadas na análise</li>
+                            <li>PickingService principal com métodos para todos os endpoints</li>
+                            <li>Sistema de validação e logging</li>
+                        </ul>
+                        <p><strong>Tempo estimado:</strong> 1-2 dias</p>
+                    </div>
+
+                    <div class="implementation-step">
+                        <h4>Serviço Principal</h4>
+                        <p><strong>PickingService.ts:</strong></p>
+                        <ul>
+                            <li><code>startSeparation(orderId: string)</code></li>
+                            <li><code>addItemToOrder(orderId: string, item: AddItemRequest)</code></li>
+                            <li><code>updateOrderItem(orderId: string, uniqueId: string, updates: UpdateItemRequest)</code></li>
+                            <li><code>removeOrderItem(orderId: string, uniqueId: string)</code></li>
+                            <li><code>endSeparation(orderId: string)</code></li>
+                        </ul>
+                        <p><strong>Tempo estimado:</strong> 2-3 dias</p>
+                    </div>
+
+                    <div class="implementation-step">
+                        <h4>Endpoints REST</h4>
+                        <p><strong>Integração no server.ts:</strong></p>
+                        <ul>
+                            <li>Criar rotas seguindo padrão dos módulos existentes</li>
+                            <li>Middleware de validação de entrada</li>
+                            <li>Tratamento de erros consistente</li>
+                            <li>Logging de auditoria</li>
+                        </ul>
+                        <p><strong>Tempo estimado:</strong> 1-2 dias</p>
+                    </div>
+
+                    <div class="implementation-step">
+                        <h4>Validações e Regras de Negócio</h4>
+                        <p><strong>Validações necessárias:</strong></p>
+                        <ul>
+                            <li>Verificar se separação foi iniciada antes de modificar itens</li>
+                            <li>Validar EAN existe no catálogo da loja</li>
+                            <li>Verificar limites de quantidade</li>
+                            <li>Validar sequence de operações</li>
+                        </ul>
+                        <p><strong>Tempo estimado:</strong> 1-2 dias</p>
+                    </div>
+
+                    <div class="implementation-step">
+                        <h4>Interface Frontend</h4>
+                        <p><strong>Componente PickingManager.tsx:</strong></p>
+                        <ul>
+                            <li>Interface para iniciar/finalizar separação</li>
+                            <li>Lista de itens do pedido com ações CRUD</li>
+                            <li>Busca de produtos por EAN</li>
+                            <li>Histórico de modificações</li>
+                        </ul>
+                        <p><strong>Tempo estimado:</strong> 3-4 dias</p>
+                    </div>
+
+                    <div class="implementation-step">
+                        <h4>Testes e Validação</h4>
+                        <p><strong>Testes necessários:</strong></p>
+                        <ul>
+                            <li>Testes unitários para todos os serviços</li>
+                            <li>Testes de integração com API real</li>
+                            <li>Testes de sequência de operações</li>
+                            <li>Testes de casos de erro</li>
+                        </ul>
+                        <p><strong>Tempo estimado:</strong> 2-3 dias</p>
+                    </div>
+                </div>
+            </section>
+
+            <section>
+                <h2>🔍 Casos de Uso Detalhados</h2>
+                
+                <div class="api-example">
+                    <h4>🛒 Cenário 1: Falta de Estoque</h4>
+                    <p><strong>Situação:</strong> Cliente pediu 3 unidades, só tem 2 em estoque</p>
+                    <ol>
+                        <li>Iniciar separação: <code>POST /startSeparation</code></li>
+                        <li>Atualizar quantidade: <code>PATCH /orders/{id}/items/{uniqueId}</code> com <code>quantity: 2</code></li>
+                        <li>Finalizar: <code>POST /endSeparation</code></li>
+                    </ol>
+                </div>
+
+                <div class="api-example">
+                    <h4>🔄 Cenário 2: Substituição de Produto</h4>
+                    <p><strong>Situação:</strong> Produto A não disponível, substituir por produto B</p>
+                    <ol>
+                        <li>Iniciar separação: <code>POST /startSeparation</code></li>
+                        <li>Adicionar substituto: <code>POST /orders/{id}/items</code> com <code>ean: "produto-B"</code> e <code>replacedUniqueId: "id-produto-A"</code></li>
+                        <li>Finalizar: <code>POST /endSeparation</code></li>
+                    </ol>
+                </div>
+
+                <div class="api-example">
+                    <h4>⚖️ Cenário 3: Ajuste de Peso</h4>
+                    <p><strong>Situação:</strong> Cliente pediu 500g, produto pesou 480g</p>
+                    <ol>
+                        <li>Iniciar separação: <code>POST /startSeparation</code></li>
+                        <li>Adicionar produto com peso real: <code>POST /orders/{id}/items</code> com <code>quantity: 480</code> e <code>replacedUniqueId</code></li>
+                        <li>Finalizar: <code>POST /endSeparation</code></li>
+                    </ol>
+                </div>
+            </section>
+
+            <section>
+                <h2>✅ Checklist de Implementação</h2>
+                
+                <div class="checklist">
+                    <h3>📁 Estrutura de Arquivos</h3>
+                    <ul>
+                        <li>Criar pasta <code>src/picking/</code></li>
+                        <li>Criar subpastas: <code>types/</code>, <code>services/</code>, <code>utils/</code>, <code>controllers/</code>, <code>__tests__/</code></li>
+                        <li>Criar arquivo README.md do módulo</li>
+                    </ul>
+                    
+                    <h3>💻 Código TypeScript</h3>
+                    <ul>
+                        <li>Definir todas as interfaces em <code>types/</code></li>
+                        <li>Implementar <code>PickingService.ts</code></li>
+                        <li>Criar <code>PickingValidationService.ts</code></li>
+                        <li>Implementar <code>PickingController.ts</code></li>
+                        <li>Adicionar utilitários em <code>utils/</code></li>
+                    </ul>
+                    
+                    <h3>🔗 Integração</h3>
+                    <ul>
+                        <li>Adicionar rotas no <code>server.ts</code></li>
+                        <li>Integrar com sistema de logs existente</li>
+                        <li>Conectar com serviços de catálogo</li>
+                        <li>Integrar com sistema de pedidos</li>
+                    </ul>
+                    
+                    <h3>🎨 Frontend</h3>
+                    <ul>
+                        <li>Criar <code>PickingManager.tsx</code></li>
+                        <li>Integrar com componentes existentes</li>
+                        <li>Adicionar ao roteamento</li>
+                        <li>Implementar notificações</li>
+                    </ul>
+                    
+                    <h3>🧪 Testes</h3>
+                    <ul>
+                        <li>Testes unitários para serviços</li>
+                        <li>Testes de integração</li>
+                        <li>Testes de casos extremos</li>
+                        <li>Testes com API real do iFood</li>
+                    </ul>
+                </div>
+            </section>
+
+            <section>
+                <h2>⚠️ Pontos de Atenção</h2>
+                
+                <div class="critical-section">
+                    <h3>🚨 Validações Críticas</h3>
+                    <ul>
+                        <li><strong>Sequência obrigatória:</strong> Sempre iniciar separação antes de qualquer modificação</li>
+                        <li><strong>Estado do pedido:</strong> Verificar se pedido permite modificações</li>
+                        <li><strong>Produtos válidos:</strong> EAN deve existir no catálogo da loja</li>
+                        <li><strong>Limites de quantidade:</strong> Respeitar limites mínimos e máximos</li>
+                    </ul>
+                </div>
+
+                <div class="warning-section">
+                    <h3>⚠️ Tratamento de Erros</h3>
+                    <ul>
+                        <li><strong>Timeout:</strong> Implementar retry com exponential backoff</li>
+                        <li><strong>Validação falhou:</strong> Rollback das operações quando possível</li>
+                        <li><strong>Rate limit:</strong> Queue de requisições com throttling</li>
+                        <li><strong>Token expirado:</strong> Renovação automática</li>
+                    </ul>
+                </div>
+            </section>
+
+            <section>
+                <h2>📊 Estimativa Final</h2>
+                
+                <div class="success-section">
+                    <h3>🎯 Cronograma de Implementação</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Fase</th>
+                                <th>Duração</th>
+                                <th>Dependências</th>
+                                <th>Entregáveis</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Estrutura Base</td>
+                                <td>1-2 dias</td>
+                                <td>Análise da API</td>
+                                <td>Types, estrutura de pastas</td>
+                            </tr>
+                            <tr>
+                                <td>Serviços Core</td>
+                                <td>2-3 dias</td>
+                                <td>Estrutura Base</td>
+                                <td>PickingService completo</td>
+                            </tr>
+                            <tr>
+                                <td>Endpoints REST</td>
+                                <td>1-2 dias</td>
+                                <td>Serviços Core</td>
+                                <td>API endpoints funcionais</td>
+                            </tr>
+                            <tr>
+                                <td>Validações</td>
+                                <td>1-2 dias</td>
+                                <td>Endpoints REST</td>
+                                <td>Sistema de validação</td>
+                            </tr>
+                            <tr>
+                                <td>Interface</td>
+                                <td>3-4 dias</td>
+                                <td>API completa</td>
+                                <td>Frontend funcional</td>
+                            </tr>
+                            <tr>
+                                <td>Testes</td>
+                                <td>2-3 dias</td>
+                                <td>Implementação completa</td>
+                                <td>Bateria de testes</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <p><strong>Total estimado:</strong> 10-16 dias de desenvolvimento</p>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <div class="info-section">
+                <h3>📋 Próximo Passo</h3>
+                <p>Com esta documentação como guia, podemos começar a implementação seguindo a ordem planejada. O primeiro passo será criar a estrutura de arquivos e as definições TypeScript baseadas no body fornecido.</p>
+                <p><strong>Pronto para começar a implementação quando autorizado!</strong></p>
+            </div>
+        </footer>
+    </article>
+</body>
+</html>
