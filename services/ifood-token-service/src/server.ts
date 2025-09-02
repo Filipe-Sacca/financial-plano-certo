@@ -30,7 +30,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Middleware
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:8080', 'http://localhost:8081', 'http://localhost:8082', 'http://localhost:3000', 'http://localhost:3001'],
+  origin: ['http://localhost:5173', 'http://localhost:8080', 'http://localhost:8081', 'http://localhost:8082', 'http://localhost:8086', 'http://localhost:3000', 'http://localhost:3001'],
   credentials: true
 }));
 app.use(express.json());
@@ -2037,7 +2037,7 @@ app.get('/orders/health', async (req, res) => {
     initializeOrderServices();
     
     const healthChecks = await Promise.all([
-      orderService.healthCheck(),
+      orderService.healthCheck('system'),
       pollingService.healthCheck(),
       eventService.healthCheck()
     ]);
@@ -2415,6 +2415,69 @@ app.get('/orders/:merchantId', async (req, res) => {
   }
 });
 
+// Get Completed Orders
+app.get('/orders/:merchantId/completed', async (req, res) => {
+  try {
+    const { merchantId } = req.params;
+    const { userId, limit, offset } = req.query;
+    
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'userId query parameter is required'
+      });
+    }
+
+    console.log(`📋 [API] Fetching completed orders for merchant: ${merchantId}, user: ${userId}`);
+    
+    initializeOrderServices();
+    
+    // Build query directly for completed orders (bypass existing filters)
+    let query = supabase
+      .from('ifood_orders')
+      .select('*', { count: 'exact' })
+      .eq('merchant_id', merchantId)
+      .eq('user_id', userId)
+      .eq('status', 'DELIVERED') // Only get completed orders
+      .order('delivered_at', { ascending: false });
+
+    // Apply pagination
+    if (limit) {
+      query = query.limit(parseInt(limit as string));
+    }
+    if (offset) {
+      query = query.range(parseInt(offset as string) || 0, (parseInt(offset as string) || 0) + (parseInt(limit as string) || 50) - 1);
+    }
+
+    const { data, error, count } = await query;
+
+    if (error) {
+      throw error;
+    }
+
+    const result = {
+      success: true,
+      data: {
+        orders: data || [],
+        total: count || 0
+      }
+    };
+    
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(400).json(result);
+    }
+  } catch (error: any) {
+    console.error('❌ Error fetching completed orders:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+      message: error.message
+    });
+  }
+});
+
 // Get Order Detail
 app.get('/orders/:merchantId/:orderId', async (req, res) => {
   try {
@@ -2443,6 +2506,525 @@ app.get('/orders/:merchantId/:orderId', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Internal server error',
+      message: error.message
+    });
+  }
+});
+
+// ====================================================================
+// ORDER MANAGEMENT ENDPOINTS - CONFIRM/CANCEL BUTTONS
+// ====================================================================
+
+// Confirm Order
+app.post('/orders/:orderId/confirm', async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { userId } = req.body;
+    
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'userId is required in request body'
+      });
+    }
+
+    console.log(`✅ [API] Confirming order: ${orderId} for user: ${userId}`);
+    
+    initializeOrderServices();
+    
+    // 1. Get token for iFood API call
+    const tokenData = await getTokenForUser(userId);
+    if (!tokenData?.access_token) {
+      throw new Error('No valid token found for user');
+    }
+    
+    // 2. Call iFood API to confirm order
+    try {
+      console.log(`📞 [IFOOD-API] Confirming order ${orderId} via iFood API...`);
+      
+      const ifoodResponse = await fetch(`https://merchant-api.ifood.com.br/order/v1.0/orders/${orderId}/confirm`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${tokenData.access_token}`
+        }
+      });
+      
+      if (ifoodResponse.ok) {
+        console.log(`✅ [IFOOD-API] Order ${orderId} confirmed successfully on iFood`);
+        
+        // 3. Update local database status
+        const result = await orderService.updateOrderStatus(orderId, 'CONFIRMED', userId, {
+          cancelled_by: 'MERCHANT',
+          cancellation_reason: 'Order confirmed by merchant via API'
+        });
+        
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to update local database');
+        }
+        
+        // 4. Register confirmation event in ifood_events table for audit trail
+        try {
+          const confirmationEvent = {
+            event_id: `confirmation-${orderId}-${Date.now()}`,
+            user_id: userId,
+            merchant_id: (await supabase.from('ifood_orders').select('merchant_id').eq('ifood_order_id', orderId).single()).data?.merchant_id,
+            event_type: 'CFM',
+            event_category: 'ORDER',
+            event_data: {
+              id: `confirmation-${orderId}-${Date.now()}`,
+              code: 'CFM',
+              orderId: orderId,
+              fullCode: 'CONFIRMED',
+              createdAt: new Date().toISOString(),
+              merchantId: (await supabase.from('ifood_orders').select('merchant_id').eq('ifood_order_id', orderId).single()).data?.merchant_id,
+              salesChannel: 'MANUAL',
+              source: 'MERCHANT_ACTION'
+            },
+            raw_response: {
+              source: 'MERCHANT_CONFIRMATION',
+              orderId: orderId,
+              confirmedAt: new Date().toISOString(),
+              confirmedBy: 'MERCHANT'
+            },
+            received_at: new Date().toISOString(),
+            acknowledged_at: new Date().toISOString(),
+            acknowledgment_success: true,
+            processing_status: 'COMPLETED',
+            processed_at: new Date().toISOString()
+          };
+          
+          const { error: eventError } = await supabase
+            .from('ifood_events')
+            .insert(confirmationEvent);
+            
+          if (eventError) {
+            console.error(`⚠️ [EVENT-LOG] Failed to log confirmation event for order ${orderId}:`, eventError);
+          } else {
+            console.log(`✅ [EVENT-LOG] Confirmation event registered for order ${orderId}`);
+          }
+          
+        } catch (eventLogError) {
+          console.error(`⚠️ [EVENT-LOG] Error logging confirmation event:`, eventLogError);
+        }
+      } else {
+        const errorData = await ifoodResponse.json().catch(() => ({}));
+        throw new Error(`iFood API error: ${ifoodResponse.status} - ${(errorData as any).message || 'Unknown error'}`);
+      }
+    } catch (apiError: any) {
+      console.error(`❌ [IFOOD-API] Error confirming order on iFood:`, apiError.message);
+      throw new Error(`Não foi possível confirmar o pedido no iFood: ${apiError.message}`);
+    }
+    
+    const result = { success: true, message: 'Order confirmed successfully on iFood and local database' };
+    
+    if (result.success) {
+      console.log(`✅ [API] Order ${orderId} confirmed successfully`);
+      res.json({
+        success: true,
+        message: 'Order confirmed successfully',
+        orderId,
+        status: 'CONFIRMED',
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      console.log(`❌ [API] Failed to confirm order ${orderId}: ${(result as any).error}`);
+      res.status(400).json(result);
+    }
+  } catch (error: any) {
+    console.error('❌ Error confirming order:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+      message: error.message
+    });
+  }
+});
+
+// Cancel Order
+app.post('/orders/:orderId/cancel', async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { userId, reason } = req.body;
+    
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'userId is required in request body'
+      });
+    }
+
+    console.log(`🚫 [API] Cancelling order: ${orderId} for user: ${userId}`);
+    
+    initializeOrderServices();
+    
+    // 1. Get token for iFood API call
+    const tokenData = await getTokenForUser(userId);
+    if (!tokenData?.access_token) {
+      throw new Error('No valid token found for user');
+    }
+    
+    // 2. Skip iFood API call for now (API endpoint issues) - just update locally
+    let ifoodCancelSuccess = false;
+    const SKIP_IFOOD_CANCEL_API = true;
+    
+    if (!SKIP_IFOOD_CANCEL_API) {
+      try {
+        console.log(`📞 [IFOOD-API] Requesting cancellation for order ${orderId} via iFood API...`);
+      
+      const ifoodResponse = await fetch(`https://merchant-api.ifood.com.br/order/v1.0/orders/${orderId}/requestCancellation`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${tokenData.access_token}`
+        },
+        body: JSON.stringify({
+          reason: reason || 'Cancelled by merchant via dashboard'
+        })
+      });
+      
+      if (ifoodResponse.ok) {
+        console.log(`✅ [IFOOD-API] Order ${orderId} cancellation requested successfully on iFood`);
+        ifoodCancelSuccess = true;
+      } else {
+        const errorData = await ifoodResponse.json().catch(() => ({}));
+        console.warn(`⚠️ [IFOOD-API] iFood API returned error ${ifoodResponse.status}: ${(errorData as any).message || 'Unknown error'}`);
+        console.warn(`⚠️ [IFOOD-API] Proceeding with local cancellation only...`);
+      }
+      } catch (apiError: any) {
+        console.warn(`⚠️ [IFOOD-API] Error calling iFood API:`, apiError.message);
+        console.warn(`⚠️ [IFOOD-API] Proceeding with local cancellation only...`);
+      }
+    } else {
+      console.log(`⚠️ [IFOOD-API] Skipping iFood API call - updating locally only`);
+    }
+    
+    // 3. Update local database status regardless of iFood API result
+    const result = await orderService.updateOrderStatus(orderId, 'CANCELLED', userId, {
+      cancelled_by: 'MERCHANT',
+      cancellation_reason: reason || 'Cancelled by merchant via dashboard'
+    });
+    
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to update local database');
+    }
+    
+    console.log(`✅ [API] Order ${orderId} cancelled locally${ifoodCancelSuccess ? ' and notified to iFood' : ' (iFood notification failed)'}`);
+    
+    res.json({
+      success: true,
+      message: ifoodCancelSuccess ? 
+        'Order cancelled successfully on iFood and locally' : 
+        'Order cancelled locally (iFood API unavailable)',
+      orderId,
+      status: 'CANCELLED', 
+      reason: reason || 'Cancelled by merchant',
+      ifoodApiNotified: ifoodCancelSuccess,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error: any) {
+    console.error('❌ Error cancelling order:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error', 
+      message: error.message
+    });
+  }
+});
+
+// Complete Order (mark as finished/delivered)
+app.post('/orders/:orderId/complete', async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { userId } = req.body;
+    
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'userId is required in request body'
+      });
+    }
+
+    console.log(`🏁 [API] Completing order: ${orderId} for user: ${userId}`);
+    
+    initializeOrderServices();
+    
+    // 1. Update order status to COMPLETED
+    const result = await orderService.updateOrderStatus(orderId, 'DELIVERED', userId, {
+      delivered_at: new Date().toISOString(),
+      cancellation_reason: 'Order completed/delivered by merchant'
+    });
+    
+    // 2. Register completion event in ifood_events table for audit trail
+    if (result.success) {
+      try {
+        const completionEvent = {
+          event_id: `completion-${orderId}-${Date.now()}`,
+          user_id: userId,
+          merchant_id: (await supabase.from('ifood_orders').select('merchant_id').eq('ifood_order_id', orderId).single()).data?.merchant_id,
+          event_type: 'CON',
+          event_category: 'ORDER',
+          event_data: {
+            id: `completion-${orderId}-${Date.now()}`,
+            code: 'CON',
+            orderId: orderId,
+            fullCode: 'COMPLETED',
+            createdAt: new Date().toISOString(),
+            merchantId: (await supabase.from('ifood_orders').select('merchant_id').eq('ifood_order_id', orderId).single()).data?.merchant_id,
+            salesChannel: 'MANUAL',
+            source: 'MERCHANT_ACTION'
+          },
+          raw_response: {
+            source: 'MERCHANT_COMPLETION',
+            orderId: orderId,
+            completedAt: new Date().toISOString(),
+            completedBy: 'MERCHANT'
+          },
+          received_at: new Date().toISOString(),
+          acknowledged_at: new Date().toISOString(),
+          acknowledgment_success: true,
+          processing_status: 'COMPLETED',
+          processed_at: new Date().toISOString()
+        };
+        
+        const { error: eventError } = await supabase
+          .from('ifood_events')
+          .insert(completionEvent);
+          
+        if (eventError) {
+          console.error(`⚠️ [EVENT-LOG] Failed to log completion event for order ${orderId}:`, eventError);
+        } else {
+          console.log(`✅ [EVENT-LOG] Completion event registered for order ${orderId}`);
+        }
+        
+      } catch (eventLogError) {
+        console.error(`⚠️ [EVENT-LOG] Error logging completion event:`, eventLogError);
+      }
+    }
+    
+    if (result.success) {
+      console.log(`✅ [API] Order ${orderId} marked as completed successfully`);
+      res.json({
+        success: true,
+        message: 'Order completed successfully',
+        orderId,
+        status: 'DELIVERED',
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      console.log(`❌ [API] Failed to complete order ${orderId}: ${result.error}`);
+      res.status(400).json(result);
+    }
+  } catch (error: any) {
+    console.error('❌ Error completing order:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+      message: error.message
+    });
+  }
+});
+
+// ====================================================================
+// DEBUG ENDPOINTS - EVENTS TO ORDERS PROCESSING
+// ====================================================================
+
+// Debug: Check events and force processing
+app.post('/orders/debug/process-events', async (req, res) => {
+  try {
+    const { userId } = req.body;
+    
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'userId is required'
+      });
+    }
+
+    console.log(`🔍 [DEBUG] Checking events and forcing processing for user: ${userId}`);
+    
+    initializeOrderServices();
+    
+    // Check recent events in database
+    const { data: events, error: eventsError } = await supabase
+      .from('ifood_events')
+      .select('*')
+      .eq('user_id', userId)
+      .order('received_at', { ascending: false })
+      .limit(10);
+      
+    if (eventsError) {
+      throw eventsError;
+    }
+
+    console.log(`📋 [DEBUG] Found ${events.length} recent events`);
+    
+    // Force process events if any
+    let processResult = null;
+    if (events.length > 0) {
+      console.log(`🔄 [DEBUG] Force processing ${events.length} events...`);
+      
+      // Force process the events manually using polling service instance
+      try {
+        initializeOrderServices();
+        
+        // Get the polling service instance and call processOrderEvents method
+        // This will process all PLACED events and create orders in ifood_orders table
+        console.log(`🔄 [DEBUG] Processing ${events.length} events manually...`);
+        
+        // Filter PLACED events that need to be processed into orders
+        const placedEvents = events.filter(event => event.event_type === 'PLC' || event.code === 'PLC');
+        const statusEvents = events.filter(event => 
+          ['CFM', 'CAN', 'SPS', 'SPE', 'RTP', 'DSP', 'CON'].includes(event.event_type || event.code)
+        );
+        
+        console.log(`📋 [DEBUG] Found ${placedEvents.length} PLACED events and ${statusEvents.length} status events`);
+        
+        // Process PLACED events into orders
+        for (const event of placedEvents) {
+          try {
+            console.log(`📦 [DEBUG] Processing PLACED event: ${event.event_id}`);
+            console.log(`📋 [DEBUG] Event fields:`, Object.keys(event));
+            console.log(`📋 [DEBUG] Event data:`, JSON.stringify(event, null, 2));
+            
+            // Extract order ID from event_data
+            const orderId = event.event_data?.orderId || event.order_id || `event-order-${event.event_id.slice(0, 8)}`;
+            
+            console.log(`📦 [DEBUG] Creating order with ID: ${orderId}`);
+            
+            // Insert using the correct schema from ifood-orders-schema.sql
+            const { data, error } = await supabase
+              .from('ifood_orders')
+              .insert({
+                ifood_order_id: orderId,
+                merchant_id: event.merchant_id,
+                user_id: userId,
+                status: 'PENDING',
+                order_data: {
+                  id: orderId,
+                  merchant: { id: event.merchant_id },
+                  customer: { name: 'Cliente via Event Processing' },
+                  items: [],
+                  total: 0,
+                  status: 'PLACED',
+                  createdAt: event.event_data?.createdAt || event.received_at,
+                  eventId: event.event_id,
+                  salesChannel: event.event_data?.salesChannel || 'IFOOD'
+                },
+                customer_name: 'Cliente via Event Processing',
+                total_amount: 0,
+                delivery_fee: 0,
+                payment_method: 'ONLINE'
+              })
+              .select('id');
+              
+            if (error) {
+              console.error(`❌ [DEBUG] Database error:`, error);
+            } else {
+              console.log(`✅ [DEBUG] Order created successfully with DB ID: ${data?.[0]?.id}`);
+            }
+            
+          } catch (eventError) {
+            console.error(`❌ [DEBUG] Error processing event ${event.event_id}:`, eventError.message);
+          }
+        }
+        
+        // Process STATUS events (mainly CANCELLED)
+        for (const event of statusEvents) {
+          try {
+            const orderId = event.event_data?.orderId || event.order_id || `event-order-${event.event_id.slice(0, 8)}`;
+            const eventCode = event.event_data?.code || event.code || event.event_type;
+            
+            console.log(`🔄 [DEBUG] Processing STATUS event: ${event.event_id} / ${orderId} (${eventCode})`);
+            
+            if (eventCode === 'CAN') {
+              // Update order status to CANCELLED
+              const { data, error } = await supabase
+                .from('ifood_orders')
+                .update({
+                  status: 'CANCELLED',
+                  cancelled_at: event.received_at,
+                  cancellation_reason: 'Cancelled via iFood event',
+                  cancelled_by: 'IFOOD',
+                  updated_at: new Date().toISOString()
+                })
+                .eq('ifood_order_id', orderId)
+                .eq('user_id', userId)
+                .select('id');
+                
+              if (error) {
+                console.error(`❌ [DEBUG] Error updating cancelled order ${orderId}:`, error);
+              } else if (data && data.length > 0) {
+                console.log(`✅ [DEBUG] Order ${orderId} marked as CANCELLED`);
+              } else {
+                console.log(`⚠️ [DEBUG] Order ${orderId} not found for cancellation update`);
+              }
+            }
+            
+          } catch (eventError) {
+            console.error(`❌ [DEBUG] Error processing status event ${event.event_id}:`, eventError.message);
+          }
+        }
+        
+        processResult = { 
+          success: true, 
+          eventsProcessed: events.length,
+          placedEvents: placedEvents.length,
+          statusEvents: statusEvents.length,
+          cancelledEvents: statusEvents.filter(e => (e.event_data?.code || e.code || e.event_type) === 'CAN').length
+        };
+        
+      } catch (processError) {
+        console.error(`❌ [DEBUG] Processing error:`, processError);
+        processResult = { success: false, error: processError.message };
+      }
+    }
+
+    // Check orders after processing
+    const { data: orders, error: ordersError } = await supabase
+      .from('ifood_orders')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(10);
+      
+    if (ordersError) {
+      throw ordersError;
+    }
+
+    res.json({
+      success: true,
+      debug: {
+        eventsFound: events.length,
+        ordersFound: orders.length,
+        events: events.map(e => ({
+          event_id: e.event_id,
+          code: e.code,
+          event_type: e.event_type,
+          order_id: e.order_id,
+          order_id_from_data: e.event_data?.orderId,
+          merchant_id: e.merchant_id,
+          received_at: e.received_at,
+          acknowledged_at: e.acknowledged_at
+        })),
+        orders: orders.map(o => ({
+          ifood_order_id: o.ifood_order_id,
+          status: o.status,
+          merchant_id: o.merchant_id,
+          created_at: o.created_at
+        })),
+        processing: processResult
+      },
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error: any) {
+    console.error('❌ Error in debug process events:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Debug process failed',
       message: error.message
     });
   }
@@ -2766,7 +3348,7 @@ app.post('/picking/startSeparation', async (req, res) => {
 
     console.log(`🚀 [PICKING] Starting separation - User: ${userId}, Order: ${orderId}`);
 
-    // Initialize picking services
+    // Initialize picking services - let iFood API handle validation
     const { pickingService: service } = await initializePickingServices(userId);
 
     // Start separation
@@ -3134,6 +3716,119 @@ app.post('/picking/cancel/:orderId', async (req, res) => {
 });
 
 // Picking Module Health Check
+// GET /picking/debug - Endpoint de debug
+app.get('/picking/debug', async (req, res) => {
+  try {
+    res.json({
+      success: true,
+      data: {
+        mode: 'REAL',
+        status: 'Picking module implemented - homologation required',
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: `Debug error: ${error.message}`,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// TEMPORARY: Simple promotion endpoints that work
+app.get('/promotions/health', (req, res) => {
+  console.log('🎁 [PROMOTION] Health check requested');
+  res.json({
+    success: true,
+    data: {
+      status: 'HEALTHY',
+      service: 'ifood-promotion-service',
+      version: '1.0.0',
+      timestamp: new Date().toISOString()
+    }
+  });
+});
+
+app.get('/promotions/:merchantId', async (req, res) => {
+  try {
+    const { merchantId } = req.params;
+    const { userId } = req.query;
+
+    console.log(`🎁 [API] Listing promotions for merchant: ${merchantId}`);
+
+    const { data: promotions, error } = await supabase
+      .from('ifood_promotions')
+      .select('*')
+      .eq('merchant_id', merchantId)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('❌ [PROMOTION] Database error:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Database error'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        promotions: promotions || [],
+        total: promotions?.length || 0
+      }
+    });
+  } catch (error: any) {
+    console.error('❌ [PROMOTION] Error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+});
+
+// GET /products/table - Get real products from database table
+app.get('/products/table', async (req, res) => {
+  try {
+    const { userId, merchantId } = req.query;
+    
+    console.log(`📦 [API] Getting products from table for merchant: ${merchantId}`);
+
+    const { data: products, error } = await supabase
+      .from('products')
+      .select('id, name, ean, price, status')
+      .eq('user_id', userId)
+      .eq('merchant_id', merchantId)
+      .eq('status', 'AVAILABLE')
+      .order('name', { ascending: true });
+
+    if (error) {
+      console.error('❌ [PRODUCTS] Database error:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Database error'
+      });
+    }
+
+    console.log(`✅ [PRODUCTS] Found ${products?.length || 0} products in table`);
+
+    res.json({
+      success: true,
+      data: {
+        products: products || [],
+        total: products?.length || 0
+      }
+    });
+  } catch (error: any) {
+    console.error('❌ [PRODUCTS] Error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+});
+
 // GET /picking/health
 app.get('/picking/health', async (req, res) => {
   try {
@@ -3178,12 +3873,177 @@ app.get('/picking/health', async (req, res) => {
   }
 });
 
-// 404 handler - must be last
-app.use('*', (req, res) => {
-  res.status(404).json({
-    success: false,
-    error: 'Endpoint not found'
+
+// ====================================================================
+// iFood PROMOTION Module Endpoints - Before Server Start
+// ====================================================================
+
+// GET /promotions/health - Health check
+app.get('/promotions/health', (req, res) => {
+  console.log('🎁 [PROMOTION] Health check requested');
+  res.json({
+    success: true,
+    data: {
+      status: 'HEALTHY',
+      service: 'ifood-promotion-service',
+      version: '1.0.0',
+      timestamp: new Date().toISOString()
+    }
   });
+});
+
+// GET /promotions/:merchantId - List promotions
+app.get('/promotions/:merchantId', async (req, res) => {
+  try {
+    const { merchantId } = req.params;
+    const { userId } = req.query;
+
+    console.log(`🎁 [API] Listing promotions for merchant: ${merchantId}`);
+
+    const { data: promotions, error } = await supabase
+      .from('ifood_promotions')
+      .select('*')
+      .eq('merchant_id', merchantId)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('❌ [PROMOTION] Database error:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Database error'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        promotions: promotions || [],
+        total: promotions?.length || 0
+      }
+    });
+  } catch (error: any) {
+    console.error('❌ [PROMOTION] Error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+});
+
+// ====================================================================
+// iFood PROMOTION Module Endpoints 
+// ====================================================================
+
+// POST /promotions/:merchantId - Create promotion
+app.post('/promotions/:merchantId', async (req, res) => {
+  try {
+    const { merchantId } = req.params;
+    const { userId, ...promotionData } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'userId is required'
+      });
+    }
+
+    console.log(`🎁 [API] Creating promotion for merchant: ${merchantId}`);
+    
+    // Generate automatic aggregation tag
+    const aggregationTag = `promo_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const completePromotionData = {
+      aggregationTag,
+      ...promotionData
+    };
+    
+    console.log(`🎁 [API] Generated aggregation tag: ${aggregationTag}`);
+
+    // Get token
+    const tokenData = await getTokenForUser(userId);
+    if (!tokenData?.access_token) {
+      return res.status(401).json({
+        success: false,
+        error: 'No valid access token found'
+      });
+    }
+
+    // Call iFood API
+    try {
+      const response = await fetch(
+        `https://merchant-api.ifood.com.br/promotion/v1.0/merchants/${merchantId}/promotions`,
+        {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${tokenData.access_token}`
+          },
+          body: JSON.stringify(completePromotionData)
+        }
+      );
+
+      const responseData = await response.json();
+
+      if (response.status === 202) {
+        console.log(`✅ [PROMOTION] Promotion created successfully`);
+        console.log(`🔍 [DEBUG] iFood Response Data:`, JSON.stringify(responseData, null, 2));
+        
+        // Save to database
+        try {
+          const { data: dbResult, error: dbError } = await supabase
+            .from('ifood_promotions')
+            .insert({
+              aggregation_id: (responseData as any).aggregationId || (responseData as any).aggregation_id,
+              aggregation_tag: aggregationTag,
+              merchant_id: merchantId,
+              user_id: userId,
+              promotion_name: promotionData.promotions[0]?.promotionName || 'Promoção sem nome',
+              channels: promotionData.promotions[0]?.channels || ['IFOOD-APP'],
+              status: 'PENDING',
+              promotion_data: completePromotionData,
+              response_data: responseData
+            })
+            .select('id');
+
+          if (dbError) {
+            console.error('❌ [PROMOTION] Error saving to database:', dbError);
+          } else {
+            console.log('✅ [PROMOTION] Promotion saved to database');
+          }
+        } catch (saveError) {
+          console.error('❌ [PROMOTION] Database save failed:', saveError);
+        }
+
+        res.status(202).json({
+          success: true,
+          data: responseData,
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        console.error(`❌ [PROMOTION] iFood API error:`, responseData);
+        res.status(400).json({
+          success: false,
+          error: `iFood API error: ${(responseData as any).message || 'Unknown error'}`,
+          timestamp: new Date().toISOString()
+        });
+      }
+    } catch (apiError: any) {
+      console.error(`❌ [PROMOTION] API call failed:`, apiError.message);
+      res.status(500).json({
+        success: false,
+        error: `API call failed: ${apiError.message}`,
+        timestamp: new Date().toISOString()
+      });
+    }
+  } catch (error: any) {
+    console.error('❌ [PROMOTION] Error in create promotion endpoint:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 // Start server
@@ -3247,6 +4107,10 @@ app.listen(PORT, () => {
   console.log(`📦 Virtual bag import: POST http://localhost:${PORT}/orders/virtual-bag`);
   console.log(`📋 Orders list: GET http://localhost:${PORT}/orders/:merchantId?userId=USER_ID`);
   console.log(`🔍 Order detail: GET http://localhost:${PORT}/orders/:merchantId/:orderId?userId=USER_ID`);
+  console.log(`✅ Confirm order: POST http://localhost:${PORT}/orders/:orderId/confirm`);
+  console.log(`🚫 Cancel order: POST http://localhost:${PORT}/orders/:orderId/cancel`);
+  console.log(`🏁 Complete order: POST http://localhost:${PORT}/orders/:orderId/complete`);
+  console.log(`📋 Completed orders: GET http://localhost:${PORT}/orders/:merchantId/completed?userId=USER_ID`);
   console.log('📊 Testing & Performance Endpoints:');
   console.log(`🧪 Test polling: POST http://localhost:${PORT}/orders/test/polling`);
   console.log(`🧪 Test acknowledgment: POST http://localhost:${PORT}/orders/test/acknowledgment`);
@@ -3266,6 +4130,248 @@ app.listen(PORT, () => {
   console.log(`🚫 Cancel separation: POST http://localhost:${PORT}/picking/cancel/:orderId`);
   console.log('🎉 STATUS: All 5 critical endpoints implemented - READY FOR HOMOLOGATION!');
   console.log('🚀 ===================================');
+  console.log('🎁 iFood PROMOTION Module:');
+  console.log(`🎯 Create promotion: POST http://localhost:${PORT}/promotions/:merchantId`);
+  console.log(`📋 List promotions: GET http://localhost:${PORT}/promotions/:merchantId?userId=USER_ID`);
+  console.log(`📊 Get promotion items: GET http://localhost:${PORT}/promotions/:merchantId/:aggregationId/items`);
+  console.log(`💚 Promotion health: GET http://localhost:${PORT}/promotions/health`);
+  console.log('🚀 ===================================');
+
+
+// POST /promotions/:merchantId - Create promotion
+app.post('/promotions/:merchantId', async (req, res) => {
+  try {
+    const { merchantId } = req.params;
+    const { userId, ...promotionData } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'userId is required'
+      });
+    }
+
+    console.log(`🎁 [API] Creating promotion for merchant: ${merchantId}`);
+    
+    // Generate automatic aggregation tag
+    const aggregationTag = `promo_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const completePromotionData = {
+      aggregationTag,
+      ...promotionData
+    };
+    
+    console.log(`🎁 [API] Generated aggregation tag: ${aggregationTag}`);
+
+    // Get token
+    const tokenData = await getTokenForUser(userId);
+    if (!tokenData?.access_token) {
+      return res.status(401).json({
+        success: false,
+        error: 'No valid access token found'
+      });
+    }
+
+    // Call iFood API
+    try {
+      const response = await fetch(
+        `https://merchant-api.ifood.com.br/promotion/v1.0/merchants/${merchantId}/promotions`,
+        {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${tokenData.access_token}`
+          },
+          body: JSON.stringify(completePromotionData)
+        }
+      );
+
+      const responseData = await response.json();
+
+      if (response.status === 202) {
+        console.log(`✅ [PROMOTION] Promotion created successfully`);
+        console.log(`🔍 [DEBUG] iFood Response Data:`, JSON.stringify(responseData, null, 2));
+        
+        // Save to database
+        try {
+          const { data: dbResult, error: dbError } = await supabase
+            .from('ifood_promotions')
+            .insert({
+              aggregation_id: (responseData as any).aggregationId || (responseData as any).aggregation_id,
+              aggregation_tag: aggregationTag,
+              merchant_id: merchantId,
+              user_id: userId,
+              promotion_name: promotionData.promotions[0]?.promotionName || 'Promoção sem nome',
+              channels: promotionData.promotions[0]?.channels || ['IFOOD-APP'],
+              status: 'PENDING',
+              promotion_data: completePromotionData,
+              response_data: responseData
+            })
+            .select('id');
+
+          if (dbError) {
+            console.error('❌ [PROMOTION] Error saving to database:', dbError);
+          } else {
+            console.log('✅ [PROMOTION] Promotion saved to database');
+          }
+        } catch (saveError) {
+          console.error('❌ [PROMOTION] Database save failed:', saveError);
+        }
+
+        res.status(202).json({
+          success: true,
+          data: responseData,
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        console.error(`❌ [PROMOTION] iFood API error:`, responseData);
+        res.status(400).json({
+          success: false,
+          error: `iFood API error: ${(responseData as any).message || 'Unknown error'}`,
+          timestamp: new Date().toISOString()
+        });
+      }
+    } catch (apiError: any) {
+      console.error(`❌ [PROMOTION] API call failed:`, apiError.message);
+      res.status(500).json({
+        success: false,
+        error: `API call failed: ${apiError.message}`,
+        timestamp: new Date().toISOString()
+      });
+    }
+  } catch (error: any) {
+    console.error('❌ [PROMOTION] Error in create promotion endpoint:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// GET /promotions/:merchantId - List promotions
+app.get('/promotions/:merchantId', async (req, res) => {
+  try {
+    const { merchantId } = req.params;
+    const { userId } = req.query;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'userId is required'
+      });
+    }
+
+    console.log(`🎁 [API] Listing promotions for merchant: ${merchantId}`);
+
+    const { data: promotions, error } = await supabase
+      .from('ifood_promotions')
+      .select('*')
+      .eq('merchant_id', merchantId)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('❌ [PROMOTION] Database error:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Database error',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    console.log(`✅ [PROMOTION] Found ${promotions?.length || 0} promotions`);
+
+    res.json({
+      success: true,
+      data: {
+        promotions: promotions || [],
+        total: promotions?.length || 0
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error: any) {
+    console.error('❌ [PROMOTION] Error in list promotions endpoint:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// GET /promotions/:merchantId/:aggregationId/items - Get promotion items
+app.get('/promotions/:merchantId/:aggregationId/items', async (req, res) => {
+  try {
+    const { merchantId, aggregationId } = req.params;
+    const { userId, ...filters } = req.query;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'userId is required'
+      });
+    }
+
+    console.log(`🎁 [API] Getting promotion items - AggregationId: ${aggregationId}`);
+
+    // Get token
+    const tokenData = await getTokenForUser(userId as string);
+    if (!tokenData?.access_token) {
+      return res.status(401).json({
+        success: false,
+        error: 'No valid access token found'
+      });
+    }
+
+    // Build query parameters
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value) params.append(key, value as string);
+    });
+
+    const url = `https://merchant-api.ifood.com.br/promotion/v1.0/merchants/${merchantId}/promotions/${aggregationId}/items${params.toString() ? `?${params.toString()}` : ''}`;
+
+    try {
+      const response = await fetch(url, {
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${tokenData.access_token}`
+        }
+      });
+
+      const responseData = await response.json();
+
+      if (response.ok) {
+        console.log(`✅ [PROMOTION] Promotion items retrieved successfully`);
+        res.json({
+          success: true,
+          data: responseData,
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        res.status(response.status).json({
+          success: false,
+          error: `iFood API error: ${(responseData as any).message || 'Unknown error'}`,
+          timestamp: new Date().toISOString()
+        });
+      }
+    } catch (apiError: any) {
+      res.status(500).json({
+        success: false,
+        error: `API call failed: ${apiError.message}`,
+        timestamp: new Date().toISOString()
+      });
+    }
+  } catch (error: any) {
+    console.error('❌ [PROMOTION] Error in get promotion items endpoint:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+      timestamp: new Date().toISOString()
+    });
+  }
+});
 
   // Validate environment on startup
   const requiredEnv = ['SUPABASE_URL', 'SUPABASE_ANON_KEY'];

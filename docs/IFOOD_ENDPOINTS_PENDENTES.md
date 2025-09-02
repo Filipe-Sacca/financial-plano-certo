@@ -425,12 +425,46 @@ POST /endSeparation
 
 ### 6.1 - Criar Promoção
 ```http
-POST /promotions
+
+https://merchant-api.ifood.com.br/promotion/v1.0/merchants/{merchantId}/promotions
+
 ```
 **Parâmetros**:
 ```json
-// Adicionar parâmetros corretos abaixo:
 
+Name	Description
+merchantId * string(path)
+
+reset (boolean) 
+o que faz: Reset current promotion items List
+
+
+Request Body Example:
+
+{
+  "aggregationTag": "123456",
+  "promotions": [
+    {
+      "promotionName": "Promoção teste",
+      "channels": [
+        "IFOOD-APP"
+      ],
+      "items": [
+        {
+          "ean": "3213434343",
+          "discountValue": 0,
+          "initialDate": "2024-10-23",
+          "finalDate": "2024-10-30",
+          "promotionType": "LXPY",
+          "progressiveDiscount": {
+            "quantityToBuy": "3",
+            "quantityToPay": "2"
+          }
+        }
+      ]
+    }
+  ]
+}
 ```
 **Response esperado**: HTTP 202
 
@@ -439,12 +473,33 @@ POST /promotions
 ### 6.2 - Validar Retorno de Promoção
 ```http
 // Adicionar endpoint correto abaixo:
-
+GET https://merchant-api.ifood.com.br/promotion/v1.0/merchants/{merchantId}/promotions/{aggregationId}/items
 ```
 **Parâmetros**:
 ```json
-// Adicionar parâmetros corretos abaixo:
+merchantId *
+string(path)
 
+aggregationId *
+string(path)
+
+offset
+integer(query)
+
+limit
+integer(query) Default value : 10
+
+ean
+string(query) 
+
+promotionName
+string(query)
+
+promotionType 
+string(query)
+
+status
+string(query)
 ```
 
 ---
