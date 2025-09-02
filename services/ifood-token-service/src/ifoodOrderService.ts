@@ -336,12 +336,14 @@ export class IFoodOrderService {
         };
       }
 
-      // Build query
+      // Build query - Exclude CANCELLED and DELIVERED orders from main listing
       let query = this.supabase
         .from('ifood_orders')
         .select('*', { count: 'exact' })
         .eq('merchant_id', merchantId)
-        .eq('user_id', userId);
+        .eq('user_id', userId)
+        .neq('status', 'CANCELLED') // ✅ FILTER: Exclude cancelled orders
+        .neq('status', 'DELIVERED'); // ✅ FILTER: Exclude completed orders (shown separately)
 
       // Apply filters
       if (filters?.status) {

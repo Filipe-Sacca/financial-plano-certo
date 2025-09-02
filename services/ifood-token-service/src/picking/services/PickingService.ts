@@ -53,6 +53,7 @@ export class PickingService {
         };
       }
 
+
       // Verificar se separação já está em andamento
       if (this.activeSessions.has(orderId)) {
         return {
@@ -151,6 +152,7 @@ export class PickingService {
    */
   async addItemToOrder(orderId: string, itemData: AddItemRequest): Promise<PickingApiResponse<ItemOperationResponse>> {
     try {
+
       // Validações
       if (!this.activeSessions.has(orderId)) {
         return {
@@ -260,6 +262,7 @@ export class PickingService {
    */
   async updateOrderItem(orderId: string, uniqueId: string, updates: UpdateItemRequest): Promise<PickingApiResponse<ItemOperationResponse>> {
     try {
+
       // Validações
       if (!this.activeSessions.has(orderId)) {
         return {
@@ -380,6 +383,7 @@ export class PickingService {
    */
   async removeOrderItem(orderId: string, uniqueId: string, reason?: string): Promise<PickingApiResponse<ItemOperationResponse>> {
     try {
+
       // Validações
       if (!this.activeSessions.has(orderId)) {
         return {
@@ -477,6 +481,7 @@ export class PickingService {
    */
   async endSeparation(orderId: string, requestData?: EndSeparationRequest): Promise<PickingApiResponse<EndSeparationResponse>> {
     try {
+
       // Validações
       if (!this.activeSessions.has(orderId)) {
         return {

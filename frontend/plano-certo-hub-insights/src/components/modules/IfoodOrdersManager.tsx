@@ -19,7 +19,8 @@ import {
   Activity,
   Check,
   X,
-  Package
+  Package,
+  Loader2
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -70,8 +71,10 @@ interface Event {
 const IfoodOrdersManager: React.FC = () => {
   const [pollingStatus, setPollingStatus] = useState<PollingStatus | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [completedOrders, setCompletedOrders] = useState<Order[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingCompleted, setLoadingCompleted] = useState(false);
   const [selectedMerchant, setSelectedMerchant] = useState<string>('577cb3b1-5845-4fbc-a219-8cd3939cb9ea');
   const [pickingModalOpen, setPickingModalOpen] = useState(false);
   const [selectedOrderForPicking, setSelectedOrderForPicking] = useState<string>('');
@@ -113,6 +116,28 @@ const IfoodOrdersManager: React.FC = () => {
       setOrders([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Fetch completed orders for merchant
+  const fetchCompletedOrders = async () => {
+    try {
+      setLoadingCompleted(true);
+      const response = await fetch(`${API_BASE}/orders/${selectedMerchant}/completed?userId=${userId}`);
+      const data = await response.json();
+      
+      if (data.success) {
+        setCompletedOrders(data.data?.orders || []);
+        console.log('✅ Completed orders fetched:', data.data?.orders?.length || 0);
+      } else {
+        console.error('❌ Error fetching completed orders:', data.error);
+        setCompletedOrders([]);
+      }
+    } catch (error) {
+      console.error('❌ Network error fetching completed orders:', error);
+      setCompletedOrders([]);
+    } finally {
+      setLoadingCompleted(false);
     }
   };
 
@@ -183,6 +208,7 @@ const IfoodOrdersManager: React.FC = () => {
       fetchPollingStatus();
       if (selectedMerchant) {
         fetchOrders();
+        fetchCompletedOrders();
       }
     }, 10000);
 
@@ -190,6 +216,7 @@ const IfoodOrdersManager: React.FC = () => {
     fetchPollingStatus();
     if (selectedMerchant) {
       fetchOrders();
+      fetchCompletedOrders();
     }
 
     return () => clearInterval(interval);
@@ -197,30 +224,136 @@ const IfoodOrdersManager: React.FC = () => {
 
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
-      'PENDING': 'bg-yellow-100 text-yellow-800 border-yellow-200',
-      'CONFIRMED': 'bg-blue-100 text-blue-800 border-blue-200',
-      'PREPARING': 'bg-purple-100 text-purple-800 border-purple-200',
-      'READY': 'bg-green-100 text-green-800 border-green-200',
-      'DISPATCHED': 'bg-orange-100 text-orange-800 border-orange-200',
-      'DELIVERED': 'bg-green-100 text-green-800 border-green-200',
-      'CANCELLED': 'bg-red-100 text-red-800 border-red-200'
+      'PENDING': 'bg-yellow-100 text-yellow-800 border-yellow-200',      // Aguardando separação
+      'PREPARING': 'bg-orange-100 text-orange-800 border-orange-200',    // Em separação
+      'CONFIRMED': 'bg-blue-100 text-blue-800 border-blue-200',          // Pronto para entrega  
+      'DELIVERED': 'bg-green-100 text-green-800 border-green-200',       // Entregue
+      'CANCELLED': 'bg-red-100 text-red-800 border-red-200'              // Cancelado
     };
     return colors[status] || 'bg-gray-100 text-gray-800 border-gray-200';
   };
 
-  // Action handlers (sem funcionalidade por enquanto)
-  const handleConfirmOrder = (orderId: string) => {
-    toast({
-      title: "🔔 Ação Pendente",
-      description: `Confirmar pedido ${orderId.substring(0, 8)}... (funcionalidade em desenvolvimento)`
-    });
+  // Action handlers - IMPLEMENTAÇÃO REAL
+  const [loadingActions, setLoadingActions] = useState<Record<string, 'confirming' | 'cancelling' | 'completing' | null>>({});
+
+  const handleConfirmOrder = async (orderId: string) => {
+    try {
+      console.log('🔄 Confirmando pedido:', orderId);
+      setLoadingActions(prev => ({ ...prev, [orderId]: 'confirming' }));
+      
+      const response = await fetch(`${API_BASE}/orders/${orderId}/confirm`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userId }),
+      });
+      
+      const result = await response.json();
+      console.log('📋 Resultado da confirmação:', result);
+      
+      if (result.success) {
+        toast({
+          title: "✅ Pedido Confirmado",
+          description: `Pedido ${orderId.substring(0, 8)}... confirmado com sucesso!`
+        });
+        
+        // Refresh orders list
+        await fetchOrders();
+      } else {
+        throw new Error(result.error || 'Erro ao confirmar pedido');
+      }
+    } catch (error: any) {
+      console.error('❌ Erro ao confirmar pedido:', error);
+      toast({
+        title: "❌ Erro",
+        description: `Erro ao confirmar pedido: ${error.message}`,
+        variant: "destructive"
+      });
+    } finally {
+      setLoadingActions(prev => ({ ...prev, [orderId]: null }));
+    }
   };
 
-  const handleCancelOrder = (orderId: string) => {
-    toast({
-      title: "🔔 Ação Pendente", 
-      description: `Cancelar pedido ${orderId.substring(0, 8)}... (funcionalidade em desenvolvimento)`
-    });
+  const handleCancelOrder = async (orderId: string) => {
+    try {
+      console.log('🚫 Cancelando pedido:', orderId);
+      setLoadingActions(prev => ({ ...prev, [orderId]: 'cancelling' }));
+      
+      const response = await fetch(`${API_BASE}/orders/${orderId}/cancel`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          userId,
+          reason: 'Cancelado pelo merchant via dashboard'
+        }),
+      });
+      
+      const result = await response.json();
+      console.log('📋 Resultado do cancelamento:', result);
+      
+      if (result.success) {
+        toast({
+          title: "🚫 Pedido Cancelado",
+          description: `Pedido ${orderId.substring(0, 8)}... cancelado com sucesso!`
+        });
+        
+        // Refresh orders list (cancelled order will be filtered out)
+        await fetchOrders();
+      } else {
+        throw new Error(result.error || 'Erro ao cancelar pedido');
+      }
+    } catch (error: any) {
+      console.error('❌ Erro ao cancelar pedido:', error);
+      toast({
+        title: "❌ Erro",
+        description: `Erro ao cancelar pedido: ${error.message}`,
+        variant: "destructive"
+      });
+    } finally {
+      setLoadingActions(prev => ({ ...prev, [orderId]: null }));
+    }
+  };
+
+  const handleCompleteOrder = async (orderId: string) => {
+    try {
+      console.log('🏁 Concluindo pedido:', orderId);
+      setLoadingActions(prev => ({ ...prev, [orderId]: 'completing' }));
+      
+      const response = await fetch(`${API_BASE}/orders/${orderId}/complete`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userId }),
+      });
+      
+      const result = await response.json();
+      console.log('📋 Resultado da conclusão:', result);
+      
+      if (result.success) {
+        toast({
+          title: "🏁 Pedido Concluído",
+          description: `Pedido ${orderId.substring(0, 8)}... marcado como concluído!`
+        });
+        
+        // Refresh both lists
+        await Promise.all([fetchOrders(), fetchCompletedOrders()]);
+      } else {
+        throw new Error(result.error || 'Erro ao concluir pedido');
+      }
+    } catch (error: any) {
+      console.error('❌ Erro ao concluir pedido:', error);
+      toast({
+        title: "❌ Erro",
+        description: `Erro ao concluir pedido: ${error.message}`,
+        variant: "destructive"
+      });
+    } finally {
+      setLoadingActions(prev => ({ ...prev, [orderId]: null }));
+    }
   };
 
   // Open picking modal
@@ -407,38 +540,107 @@ const IfoodOrdersManager: React.FC = () => {
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-2 justify-center">
+                        {/* FLUXO CORRETO: PENDING → Separação → Confirmar → Concluir */}
+                        
+                        {/* Etapa 1: Ações para pedidos PENDING */}
                         {order.status === 'PENDING' && (
                           <>
                             <Button 
                               size="sm" 
                               variant="default"
-                              className="bg-green-600 hover:bg-green-700 text-white"
-                              onClick={() => handleConfirmOrder(order.ifood_order_id)}
+                              className="bg-green-600 hover:bg-green-700 text-white cursor-pointer"
+                              onClick={() => {
+                                console.log('🎯 Botão Confirmar clicado para pedido:', order.ifood_order_id);
+                                handleConfirmOrder(order.ifood_order_id);
+                              }}
+                              disabled={!!loadingActions[order.ifood_order_id]}
                             >
-                              <Check className="h-3 w-3 mr-1" />
+                              {loadingActions[order.ifood_order_id] === 'confirming' ? (
+                                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                              ) : (
+                                <Check className="h-3 w-3 mr-1" />
+                              )}
                               Confirmar
                             </Button>
                             <Button 
                               size="sm" 
-                              variant="destructive"
-                              onClick={() => handleCancelOrder(order.ifood_order_id)}
+                              variant="outline"
+                              className="bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
+                              onClick={() => handleOpenPicking(order.ifood_order_id)}
                             >
-                              <X className="h-3 w-3 mr-1" />
+                              <Package className="h-3 w-3 mr-1" />
+                              Separação
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="destructive"
+                              className="cursor-pointer"
+                              onClick={() => {
+                                console.log('🎯 Botão Cancelar clicado para pedido:', order.ifood_order_id);
+                                handleCancelOrder(order.ifood_order_id);
+                              }}
+                              disabled={!!loadingActions[order.ifood_order_id]}
+                            >
+                              {loadingActions[order.ifood_order_id] === 'cancelling' ? (
+                                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                              ) : (
+                                <X className="h-3 w-3 mr-1" />
+                              )}
                               Cancelar
                             </Button>
                           </>
                         )}
                         
-                        {/* Botão de Picking para pedidos em preparação */}
-                        {(order.status === 'PREPARING' || order.status === 'CONFIRMED') && (
+                        {/* Etapa 2: Continuar Separação (PREPARING) */}
+                        {order.status === 'PREPARING' && (
+                          <>
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              className="bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100"
+                              onClick={() => handleOpenPicking(order.ifood_order_id)}
+                            >
+                              <Package className="h-3 w-3 mr-1" />
+                              Continuar Separação
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="destructive"
+                              className="cursor-pointer"
+                              onClick={() => {
+                                console.log('🎯 Botão Cancelar clicado para pedido:', order.ifood_order_id);
+                                handleCancelOrder(order.ifood_order_id);
+                              }}
+                              disabled={!!loadingActions[order.ifood_order_id]}
+                            >
+                              {loadingActions[order.ifood_order_id] === 'cancelling' ? (
+                                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                              ) : (
+                                <X className="h-3 w-3 mr-1" />
+                              )}
+                              Cancelar
+                            </Button>
+                          </>
+                        )}
+                        
+                        {/* Etapa 3: Confirmar Entrega (CONFIRMED) */}
+                        {order.status === 'CONFIRMED' && (
                           <Button 
                             size="sm" 
-                            variant="outline"
-                            className="bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
-                            onClick={() => handleOpenPicking(order.ifood_order_id)}
+                            variant="default"
+                            className="bg-green-600 hover:bg-green-700 text-white cursor-pointer"
+                            onClick={() => {
+                              console.log('🎯 Botão Confirmar Entrega clicado para pedido:', order.ifood_order_id);
+                              handleCompleteOrder(order.ifood_order_id);
+                            }}
+                            disabled={!!loadingActions[order.ifood_order_id]}
                           >
-                            <Package className="h-3 w-3 mr-1" />
-                            Separação
+                            {loadingActions[order.ifood_order_id] === 'completing' ? (
+                              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                            ) : (
+                              <CheckCircle2 className="h-3 w-3 mr-1" />
+                            )}
+                            Confirmar Entrega
                           </Button>
                         )}
                         
@@ -447,6 +649,93 @@ const IfoodOrdersManager: React.FC = () => {
                           Ver
                         </Button>
                       </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Seção de Pedidos Concluídos */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <CheckCircle2 className="h-5 w-5 text-green-600" />
+            <span>Pedidos Concluídos</span>
+            <Badge variant="outline" className="ml-2 bg-green-50 text-green-700">
+              {completedOrders.length} finalizados
+            </Badge>
+          </CardTitle>
+          <CardDescription>
+            Histórico de pedidos que foram entregues/finalizados
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loadingCompleted ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <span className="ml-2">Carregando pedidos concluídos...</span>
+            </div>
+          ) : completedOrders.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <CheckCircle2 className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+              <p className="text-lg font-medium">Nenhum pedido concluído</p>
+              <p className="text-sm">Pedidos finalizados aparecerão aqui</p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Pedido</TableHead>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Total</TableHead>
+                  <TableHead>Concluído em</TableHead>
+                  <TableHead>Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {completedOrders.map((order) => (
+                  <TableRow key={order.id} className="bg-green-50/30">
+                    <TableCell>
+                      <div className="space-y-1">
+                        <div className="font-medium text-sm">
+                          {order.ifood_order_id.substring(0, 8)}...
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          ID: {order.ifood_order_id}
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="space-y-1">
+                        <div className="font-medium text-sm">
+                          {order.customer_name || 'Cliente não informado'}
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge className="bg-green-100 text-green-800 border-green-200">
+                        <CheckCircle2 className="h-3 w-3 mr-1" />
+                        CONCLUÍDO
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {order.total_amount ? `R$ ${order.total_amount.toFixed(2)}` : 'N/A'}
+                    </TableCell>
+                    <TableCell>
+                      {order.delivered_at ? 
+                        new Date(order.delivered_at).toLocaleString('pt-BR') : 
+                        new Date(order.updated_at).toLocaleString('pt-BR')
+                      }
+                    </TableCell>
+                    <TableCell>
+                      <Button size="sm" variant="outline">
+                        <Eye className="h-3 w-3 mr-1" />
+                        Ver
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}

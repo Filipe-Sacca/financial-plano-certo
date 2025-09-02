@@ -35,6 +35,7 @@ import { useAuth } from '@/App';
 import { useIfoodMerchants } from '@/hooks/useIfoodMerchants';
 import { useIntegrationCheck } from '@/hooks/useIntegrationCheck';
 import { useUserStoreProducts, useUserProductsStats } from '@/hooks/useUserStoreProducts';
+import { useUserPausedProducts, useUserPausedProductsStats } from '@/hooks/useUserPausedProducts';
 
 export const StoreMonitoring = () => {
   const { user } = useAuth();
@@ -63,8 +64,18 @@ export const StoreMonitoring = () => {
     forceRefresh: refreshProducts 
   } = useUserStoreProducts();
 
+  // Buscar APENAS produtos pausados do banco de dados
+  const { 
+    pausedProducts, 
+    groupedPausedProducts, 
+    isLoading: pausedProductsLoading,
+    forceRefresh: refreshPausedProducts,
+    totalPausedProducts
+  } = useUserPausedProducts();
+
   // Estatísticas dos produtos
   const productsStats = useUserProductsStats();
+  const pausedProductsStats = useUserPausedProductsStats();
 
   // Estados de carregamento
   const isLoading = merchantsLoading || integrationLoading;
@@ -80,7 +91,8 @@ export const StoreMonitoring = () => {
     try {
       await Promise.all([
         refetchMerchants(),
-        refreshProducts()
+        refreshProducts(),
+        refreshPausedProducts()
       ]);
     } finally {
       setIsRefreshing(false);
@@ -227,9 +239,9 @@ export const StoreMonitoring = () => {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-2xl font-bold text-white mb-1">
-                  {productsLoading ? '...' : productsStats.inactiveProducts}
+                  {pausedProductsLoading ? '...' : totalPausedProducts}
                 </p>
-                <p className="text-sm text-white">Produtos Indisponíveis</p>
+                <p className="text-sm text-white">Produtos Pausados</p>
               </div>
             </div>
           </CardContent>
@@ -336,77 +348,72 @@ export const StoreMonitoring = () => {
         </CardContent>
       </Card>
 
-      {/* Produtos por Loja */}
+      {/* Produtos Pausados por Loja */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <Pause className="h-5 w-5" />
-            <span>Produtos por Loja</span>
-            <Badge variant="outline" className="ml-2">{productsStats.totalProducts} produtos</Badge>
+            <span>Produtos Pausados por Loja</span>
+            <Badge variant="destructive" className="ml-2">{totalPausedProducts} pausados</Badge>
             <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700">
               Auto-sync 5min
             </Badge>
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {productsLoading ? (
+          {pausedProductsLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin mr-2" />
-              <span>Carregando produtos...</span>
+              <span>Carregando produtos pausados...</span>
             </div>
-          ) : !products || products.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              <Pause className="h-8 w-8 mx-auto mb-2" />
-              <p>Nenhum produto encontrado</p>
-              <p className="text-sm">Os produtos aparecerão aqui após a sincronização com o iFood</p>
+          ) : !pausedProducts || pausedProducts.length === 0 ? (
+            <div className="text-center py-8 text-green-500">
+              <CheckCircle className="h-8 w-8 mx-auto mb-2" />
+              <p className="font-medium">Nenhum produto pausado encontrado! 🎉</p>
+              <p className="text-sm">Todos os produtos das suas lojas estão disponíveis no iFood</p>
             </div>
           ) : (
             <div className="space-y-4">
-              {groupedProducts.map((storeData) => {
+              {groupedPausedProducts.map((storeData) => {
                 const merchant = merchants?.find(m => m.merchant_id === storeData.merchantId);
                 return (
-                  <div key={storeData.merchantId} className="border rounded-lg p-4">
+                  <div key={storeData.merchantId} className="border border-red-200 rounded-lg p-4 bg-red-50/30">
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center space-x-2">
                         <Store className="h-4 w-4 text-gray-600" />
                         <h3 className="font-medium">{storeData.merchantName}</h3>
                       </div>
                       <div className="flex items-center space-x-2">
-                        <Badge variant="outline" className="text-green-700">
-                          {storeData.activeProducts} ativos
+                        <Badge variant="destructive" className="text-red-700">
+                          {storeData.totalPaused} produtos pausados
                         </Badge>
-                        {storeData.inactiveProducts > 0 && (
-                          <Badge variant="outline" className="text-red-700">
-                            {storeData.inactiveProducts} pausados
-                          </Badge>
-                        )}
                       </div>
                     </div>
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {storeData.products.slice(0, 6).map((product) => (
-                        <div key={product.id} className="border rounded p-3 hover:bg-gray-50 transition-colors">
+                      {storeData.pausedProducts.slice(0, 6).map((product) => (
+                        <div key={product.id} className="border border-red-300 rounded p-3 bg-white hover:bg-red-50 transition-colors">
                           <div className="flex items-start justify-between">
                             <div className="flex-1 min-w-0">
                               <p className="font-medium text-sm truncate">{product.name}</p>
                               <p className="text-xs text-gray-500 mt-1">
                                 R$ {product.price?.toFixed(2) || '0,00'}
                               </p>
+                              {product.category && (
+                                <p className="text-xs text-gray-400 mt-1">{product.category}</p>
+                              )}
                             </div>
-                            <Badge 
-                              variant={product.is_active === 'AVAILABLE' ? 'default' : 'destructive'}
-                              className="ml-2 text-xs"
-                            >
-                              {product.is_active === 'AVAILABLE' ? 'Ativo' : 'Pausado'}
+                            <Badge variant="destructive" className="ml-2 text-xs">
+                              Pausado
                             </Badge>
                           </div>
                         </div>
                       ))}
                     </div>
                     
-                    {storeData.products.length > 6 && (
-                      <p className="text-xs text-gray-500 mt-3 text-center">
-                        +{storeData.products.length - 6} produtos adicionais
+                    {storeData.pausedProducts.length > 6 && (
+                      <p className="text-xs text-red-600 mt-3 text-center font-medium">
+                        +{storeData.pausedProducts.length - 6} produtos pausados adicionais
                       </p>
                     )}
                   </div>

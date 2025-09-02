@@ -471,26 +471,117 @@ export class IFoodPollingService {
       const storedCount = data?.length || 0;
       console.log(`✅ [POLLING-SERVICE] Stored ${storedCount} events successfully`);
 
-      // STEP 4: IMMEDIATE SEQUENTIAL PROCESSING - Process events IMMEDIATELY after saving
+      // STEP 4: SIMULTANEOUS INSERTION - Save PLACED events directly to ifood_orders
       if (storedCount > 0) {
         const eventIds = events.map(e => e.id);
         
-        // IMMEDIATE: Process order events first (blocking)
-        try {
-          console.log(`🔄 [IMMEDIATE] Processing ${events.length} events IMMEDIATELY after saving...`);
-          await this.processOrderEvents(events, userId);
-          console.log(`✅ [IMMEDIATE] Order events processed successfully`);
-        } catch (error: any) {
-          console.error(`❌ [IMMEDIATE] Order processing failed:`, error);
+        // Filter PLACED events for immediate order creation
+        const placedEvents = events.filter(event => event.code === 'PLC');
+        const statusEvents = events.filter(event => ['CFM', 'CAN', 'SPS', 'SPE', 'RTP', 'DSP', 'CON'].includes(event.code));
+        
+        console.log(`📦 [SIMULTANEOUS] Found ${placedEvents.length} PLACED events and ${statusEvents.length} status events`);
+        
+        // IMMEDIATE: Create orders for PLACED events
+        if (placedEvents.length > 0) {
+          try {
+            console.log(`📦 [SIMULTANEOUS] Creating ${placedEvents.length} orders immediately...`);
+            
+            for (const event of placedEvents) {
+              try {
+                const orderId = event.orderId;
+                console.log(`📦 [SIMULTANEOUS] Creating order: ${orderId}`);
+                
+                // Insert order directly to ifood_orders table
+                const { data: orderData, error: orderError } = await this.supabase
+                  .from('ifood_orders')
+                  .insert({
+                    ifood_order_id: orderId,
+                    merchant_id: event.merchantId,
+                    user_id: userId,
+                    status: 'PENDING',
+                    order_data: {
+                      id: orderId,
+                      merchant: { id: event.merchantId },
+                      customer: { name: 'Cliente via Polling Automático' },
+                      items: [],
+                      total: 0,
+                      status: 'PLACED',
+                      createdAt: event.createdAt,
+                      eventId: event.id,
+                      salesChannel: event.salesChannel || 'IFOOD'
+                    },
+                    customer_name: 'Cliente via Polling Automático',
+                    total_amount: 0,
+                    delivery_fee: 0,
+                    payment_method: 'ONLINE'
+                  })
+                  .select('id');
+                  
+                if (orderError) {
+                  console.error(`❌ [SIMULTANEOUS] Error creating order ${orderId}:`, orderError);
+                } else {
+                  console.log(`✅ [SIMULTANEOUS] Order created successfully: ${orderId}`);
+                }
+                
+              } catch (eventError) {
+                console.error(`❌ [SIMULTANEOUS] Error processing PLACED event:`, eventError);
+              }
+            }
+            
+          } catch (error: any) {
+            console.error(`❌ [SIMULTANEOUS] Order creation failed:`, error);
+          }
+        }
+        
+        // IMMEDIATE: Update status for STATUS events  
+        if (statusEvents.length > 0) {
+          try {
+            console.log(`🔄 [SIMULTANEOUS] Processing ${statusEvents.length} status updates...`);
+            
+            for (const event of statusEvents) {
+              try {
+                const orderId = event.orderId;
+                const eventCode = event.code;
+                
+                if (eventCode === 'CAN') {
+                  console.log(`🚫 [SIMULTANEOUS] Cancelling order: ${orderId}`);
+                  
+                  const { error: cancelError } = await this.supabase
+                    .from('ifood_orders')
+                    .update({
+                      status: 'CANCELLED',
+                      cancelled_at: new Date().toISOString(),
+                      cancellation_reason: 'Cancelled via iFood event',
+                      cancelled_by: 'IFOOD',
+                      updated_at: new Date().toISOString()
+                    })
+                    .eq('ifood_order_id', orderId)
+                    .eq('user_id', userId);
+                    
+                  if (cancelError) {
+                    console.error(`❌ [SIMULTANEOUS] Error cancelling order ${orderId}:`, cancelError);
+                  } else {
+                    console.log(`✅ [SIMULTANEOUS] Order cancelled successfully: ${orderId}`);
+                  }
+                }
+                
+              } catch (eventError) {
+                console.error(`❌ [SIMULTANEOUS] Error processing status event:`, eventError);
+              }
+            }
+            
+          } catch (error: any) {
+            console.error(`❌ [SIMULTANEOUS] Status processing failed:`, error);
+          }
         }
 
-        // STEP 5: Acknowledge after processing (sequential)
+        // STEP 5: Acknowledge after simultaneous processing
         try {
-          console.log(`✅ [IMMEDIATE] Acknowledging ${eventIds.length} events after processing...`);
+          console.log(`✅ [SIMULTANEOUS] Acknowledging ${eventIds.length} events after simultaneous processing...`);
           await this.acknowledgeStoredEvents(eventIds, userId, pollingId);
-          console.log(`✅ [IMMEDIATE] Events acknowledged successfully`);
+          console.log(`✅ [SIMULTANEOUS] Events acknowledged successfully`);
         } catch (error: any) {
-          console.error(`❌ [IMMEDIATE] Acknowledgment failed:`, error);
+          console.error(`❌ [SIMULTANEOUS] Acknowledgment failed:`, error);
         }
       }
       
@@ -577,15 +668,57 @@ export class IFoodPollingService {
    */
   private async saveOrderFromPlacedEvent(event: any, accessToken: string, userId: string): Promise<void> {
     try {
-      console.log(`📦 [ORDER-SAVE] Processing PLACED order: ${event.orderId} (${event.code})`);
+      // Extract orderId from event_data structure (like our debug endpoint)
+      const orderId = event.event_data?.orderId || event.orderId || `event-order-${event.event_id?.slice(0, 8)}`;
+      const eventCode = event.event_data?.code || event.code || event.event_type;
+      
+      console.log(`📦 [ORDER-SAVE] Processing PLACED order: ${orderId} (${eventCode})`);
+
+      // Skip if no valid orderId
+      if (!orderId || orderId.startsWith('event-order-')) {
+        console.log(`⚠️ [ORDER-SAVE] No valid orderId found, creating minimal order record`);
+        // Create minimal order directly (like our successful debug approach)
+        const { data, error } = await this.supabase
+          .from('ifood_orders')
+          .insert({
+            ifood_order_id: orderId,
+            merchant_id: event.merchant_id,
+            user_id: userId,
+            status: 'PENDING',
+            order_data: {
+              id: orderId,
+              merchant: { id: event.merchant_id },
+              customer: { name: 'Cliente via Auto Processing' },
+              items: [],
+              total: 0,
+              status: 'PLACED',
+              createdAt: event.event_data?.createdAt || event.received_at,
+              eventId: event.event_id,
+              salesChannel: event.event_data?.salesChannel || 'IFOOD'
+            },
+            customer_name: 'Cliente via Auto Processing',
+            total_amount: 0,
+            delivery_fee: 0,
+            payment_method: 'ONLINE'
+          })
+          .select('id');
+          
+        if (error) {
+          console.error(`❌ [ORDER-SAVE] Error saving minimal order:`, error);
+          throw error;
+        } else {
+          console.log(`✅ [ORDER-SAVE] Minimal order saved successfully: ${orderId}`);
+        }
+        return;
+      }
 
       // Get complete order data from virtual bag API
       let orderData = null;
       
       try {
-        console.log(`🔍 [ORDER-SAVE] Fetching order data via virtual bag: ${event.orderId}`);
+        console.log(`🔍 [ORDER-SAVE] Fetching order data via virtual bag: ${orderId}`);
         const virtualBagResponse = await this.optimizedAxios.get(
-          `https://merchant-api.ifood.com.br/order/v1.0/orders/${event.orderId}/virtual-bag`,
+          `https://merchant-api.ifood.com.br/order/v1.0/orders/${orderId}/virtual-bag`,
           {
             headers: {
               'Accept': 'application/json',
@@ -692,9 +825,13 @@ export class IFoodPollingService {
    */
   private async updateOrderStatusFromEvent(event: any, userId: string): Promise<void> {
     try {
-      console.log(`🔄 [STATUS-UPDATE] Updating order ${event.orderId} status to ${event.code}`);
+      // Extract orderId and code from event_data structure
+      const orderId = event.event_data?.orderId || event.orderId || `event-order-${event.event_id?.slice(0, 8)}`;
+      const eventCode = event.event_data?.code || event.code || event.event_type;
+      
+      console.log(`🔄 [STATUS-UPDATE] Updating order ${orderId} status to ${eventCode}`);
 
-      const newStatus = this.mapEventCodeToOrderStatus(event.code);
+      const newStatus = this.mapEventCodeToOrderStatus(eventCode);
       
       // Update order status in database
       const { error } = await this.supabase
@@ -707,21 +844,23 @@ export class IFoodPollingService {
           ...(newStatus === 'DELIVERED' && { delivered_at: new Date().toISOString() }),
           ...(newStatus === 'CANCELLED' && { 
             cancelled_at: new Date().toISOString(),
-            cancelled_by: 'IFOOD_EVENT'
+            cancelled_by: 'IFOOD_EVENT',
+            cancellation_reason: 'Cancelled via iFood event'
           })
         })
-        .eq('ifood_order_id', event.orderId)
+        .eq('ifood_order_id', orderId)
         .eq('user_id', userId);
 
       if (error) {
-        console.error(`❌ [STATUS-UPDATE] Error updating order ${event.orderId}:`, error);
+        console.error(`❌ [STATUS-UPDATE] Error updating order ${orderId}:`, error);
         throw error;
       }
 
-      console.log(`✅ [STATUS-UPDATE] Order ${event.orderId} updated to status ${newStatus}`);
+      console.log(`✅ [STATUS-UPDATE] Order ${orderId} updated to status ${newStatus}`);
 
     } catch (error: any) {
-      console.error(`❌ [STATUS-UPDATE] Error updating order ${event.orderId}:`, error.message);
+      const orderId = event.event_data?.orderId || event.orderId || event.event_id;
+      console.error(`❌ [STATUS-UPDATE] Error updating order ${orderId}:`, error.message);
       throw error;
     }
   }
