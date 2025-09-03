@@ -28,7 +28,6 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
-import PickingModal from './PickingModal';
 
 interface PollingStatus {
   isRunning: boolean;
@@ -76,8 +75,6 @@ const IfoodOrdersManager: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [loadingCompleted, setLoadingCompleted] = useState(false);
   const [selectedMerchant, setSelectedMerchant] = useState<string>('577cb3b1-5845-4fbc-a219-8cd3939cb9ea');
-  const [pickingModalOpen, setPickingModalOpen] = useState(false);
-  const [selectedOrderForPicking, setSelectedOrderForPicking] = useState<string>('');
   const userId = 'c1488646-aca8-4220-aacc-00e7ae3d6490'; // Real user ID from database
   const { toast } = useToast();
 
@@ -224,8 +221,8 @@ const IfoodOrdersManager: React.FC = () => {
 
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
-      'PENDING': 'bg-yellow-100 text-yellow-800 border-yellow-200',      // Aguardando separação
-      'PREPARING': 'bg-orange-100 text-orange-800 border-orange-200',    // Em separação
+      'PENDING': 'bg-yellow-100 text-yellow-800 border-yellow-200',      // Aguardando preparo
+      'PREPARING': 'bg-orange-100 text-orange-800 border-orange-200',    // Em preparo
       'CONFIRMED': 'bg-blue-100 text-blue-800 border-blue-200',          // Pronto para entrega  
       'DELIVERED': 'bg-green-100 text-green-800 border-green-200',       // Entregue
       'CANCELLED': 'bg-red-100 text-red-800 border-red-200'              // Cancelado
@@ -356,11 +353,6 @@ const IfoodOrdersManager: React.FC = () => {
     }
   };
 
-  // Open picking modal
-  const handleOpenPicking = (orderId: string) => {
-    setSelectedOrderForPicking(orderId);
-    setPickingModalOpen(true);
-  };
 
   return (
     <div className="p-6 space-y-6">
@@ -540,7 +532,7 @@ const IfoodOrdersManager: React.FC = () => {
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-2 justify-center">
-                        {/* FLUXO CORRETO: PENDING → Separação → Confirmar → Concluir */}
+                        {/* FLUXO CORRETO: PENDING → Preparo → Confirmar → Concluir */}
                         
                         {/* Etapa 1: Ações para pedidos PENDING */}
                         {order.status === 'PENDING' && (
@@ -566,10 +558,10 @@ const IfoodOrdersManager: React.FC = () => {
                               size="sm" 
                               variant="outline"
                               className="bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
-                              onClick={() => handleOpenPicking(order.ifood_order_id)}
+                              onClick={() => handleConfirmAction(order.ifood_order_id)}
                             >
                               <Package className="h-3 w-3 mr-1" />
-                              Separação
+                              Iniciar Preparo
                             </Button>
                             <Button 
                               size="sm" 
@@ -591,17 +583,17 @@ const IfoodOrdersManager: React.FC = () => {
                           </>
                         )}
                         
-                        {/* Etapa 2: Continuar Separação (PREPARING) */}
+                        {/* Etapa 2: Finalizar Preparo (PREPARING) */}
                         {order.status === 'PREPARING' && (
                           <>
                             <Button 
                               size="sm" 
                               variant="outline"
                               className="bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100"
-                              onClick={() => handleOpenPicking(order.ifood_order_id)}
+                              onClick={() => handleConfirmAction(order.ifood_order_id)}
                             >
                               <Package className="h-3 w-3 mr-1" />
-                              Continuar Separação
+                              Finalizar Preparo
                             </Button>
                             <Button 
                               size="sm" 
@@ -834,13 +826,6 @@ const IfoodOrdersManager: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* Modal de Picking */}
-      <PickingModal
-        isOpen={pickingModalOpen}
-        onClose={() => setPickingModalOpen(false)}
-        orderId={selectedOrderForPicking}
-        userId={userId}
-      />
     </div>
   );
 };
