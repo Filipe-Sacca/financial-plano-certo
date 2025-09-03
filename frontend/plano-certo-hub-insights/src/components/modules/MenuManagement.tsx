@@ -847,7 +847,7 @@ Renove o token na página de Tokens do iFood`);
     <div className="space-y-6 animate-fade-in pb-6 pt-8">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6 mt-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+          <h1 className="text-3xl font-bold text-white mb-2">
             Gerenciamento de Cardápios
           </h1>
           <p className="text-gray-600">
@@ -1463,15 +1463,63 @@ Renove o token na página de Tokens do iFood`);
                               <CardTitle className="text-base font-bold text-black">
                                 {category.name}
                               </CardTitle>
-                              <Badge variant="outline" className="text-green-700 border-green-300">
-                                {category.status}
-                              </Badge>
+                              <div className="flex items-center gap-2">
+                                <Badge variant="outline" className="text-blue-700 border-blue-300 bg-blue-100">
+                                  iFood
+                                </Badge>
+                                <Badge variant="outline" className="bg-gray-100 text-black font-bold">
+                                  {(() => {
+                                    const categoryProducts = products.filter(product => {
+                                      // Tenta vários campos para compatibilidade
+                                      return product.category === category.category_id || 
+                                             product.category === category.name ||
+                                             product.ifood_category_id === category.category_id ||
+                                             product.ifood_category_name === category.name;
+                                    });
+                                    // Debug log
+                                    console.log(`[${category.name}] Category ID: ${category.category_id}, Total products:`, products.length, 'Category products:', categoryProducts.length);
+                                    return categoryProducts.length;
+                                  })()} itens
+                                </Badge>
+                              </div>
                             </div>
                           </CardHeader>
                           <CardContent className="pt-0">
-                            <div className="space-y-2 text-sm text-gray-700">
-                              <div className="text-xs text-gray-600">
-                                Criado: {new Date(category.created_at).toLocaleDateString('pt-BR')}
+                            <div className="space-y-3">
+                              <div className="space-y-2">
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-gray-600">Ativos:</span>
+                                  <span className="font-medium text-green-600">
+                                    {(() => {
+                                      const categoryProducts = products.filter(product => {
+                                        return product.category === category.category_id || 
+                                               product.category === category.name ||
+                                               product.ifood_category_id === category.category_id ||
+                                               product.ifood_category_name === category.name;
+                                      });
+                                      return categoryProducts.filter(product => isProductActive(product.is_active)).length;
+                                    })()}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-gray-600">Inativos:</span>
+                                  <span className="font-medium text-red-600">
+                                    {(() => {
+                                      const categoryProducts = products.filter(product => {
+                                        return product.category === category.category_id || 
+                                               product.category === category.name ||
+                                               product.ifood_category_id === category.category_id ||
+                                               product.ifood_category_name === category.name;
+                                      });
+                                      const totalProducts = categoryProducts.length;
+                                      const activeProducts = categoryProducts.filter(product => isProductActive(product.is_active)).length;
+                                      return totalProducts - activeProducts;
+                                    })()}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="text-xs text-blue-600">
+                                Categoria oficial do iFood
                               </div>
                             </div>
                             <div className="mt-4 pt-3 border-t border-green-200">
@@ -1536,101 +1584,6 @@ Renove o token na página de Tokens do iFood`);
               </CardContent>
             </Card>
 
-            {/* Card separado para Produtos por Categoria (integração iFood + sincronização) */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-xl font-semibold text-white">Produtos por Categoria</CardTitle>
-                <CardDescription>
-                  Produtos organizados por categoria do iFood e sincronização automática
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {(() => {
-                    // Criar mapa combinado: categorias do iFood + categorias da sincronização
-                    const combinedCategoriesMap: Record<string, { name: string; items: number; active: number; isFromIFood?: boolean; ifoodId?: string }> = {};
-                    
-                    // Primeiro, adicionar todas as categorias do iFood (mesmo que sem produtos ainda)
-                    categories.forEach(ifoodCategory => {
-                      combinedCategoriesMap[ifoodCategory.name] = {
-                        name: ifoodCategory.name,
-                        items: 0,
-                        active: 0,
-                        isFromIFood: true,
-                        ifoodId: ifoodCategory.ifood_category_id
-                      };
-                    });
-                    
-                    // Depois, contar produtos para cada categoria
-                    products.forEach(product => {
-                      const categoryName = product.category || 'Sem categoria';
-                      
-                      if (!combinedCategoriesMap[categoryName]) {
-                        // Categoria da sincronização que não existe no iFood
-                        combinedCategoriesMap[categoryName] = {
-                          name: categoryName,
-                          items: 0,
-                          active: 0,
-                          isFromIFood: false
-                        };
-                      }
-                      
-                      combinedCategoriesMap[categoryName].items++;
-                      if (isProductActive(product.is_active)) {
-                        combinedCategoriesMap[categoryName].active++;
-                      }
-                    });
-
-                    const allCategoriesWithProducts = Object.values(combinedCategoriesMap);
-
-                    if (allCategoriesWithProducts.length === 0) {
-                      return (
-                        <div className="col-span-full text-center py-8">
-                          <Package className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-                          <div className="text-gray-600">Nenhuma categoria encontrada</div>
-                          <p className="text-sm text-gray-500 mt-2">
-                            Clique em "Sincronizar iFood" para buscar categorias
-                          </p>
-                        </div>
-                      );
-                    }
-
-                    return allCategoriesWithProducts.map((category, index) => (
-                      <Card key={index} className={category.isFromIFood ? "border-blue-200 bg-blue-50" : ""}>
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-2">
-                              <h3 className="font-bold text-black">{category.name}</h3>
-                              {category.isFromIFood && (
-                                <Badge variant="outline" className="text-blue-700 border-blue-300 bg-blue-100">
-                                  iFood
-                                </Badge>
-                              )}
-                            </div>
-                            <Badge variant="outline" className="bg-gray-100 text-black font-bold">{category.items} itens</Badge>
-                          </div>
-                          <div className="space-y-2">
-                            <div className="flex justify-between text-sm">
-                              <span className="text-gray-600">Ativos:</span>
-                              <span className="font-medium text-green-600">{category.active}</span>
-                            </div>
-                            <div className="flex justify-between text-sm">
-                              <span className="text-gray-600">Inativos:</span>
-                              <span className="font-medium text-red-600">{category.items - category.active}</span>
-                            </div>
-                            {category.isFromIFood && category.ifoodId && (
-                              <div className="text-xs text-blue-600 mt-2">
-                                Categoria oficial do iFood
-                              </div>
-                            )}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ));
-                  })()}
-                </div>
-              </CardContent>
-            </Card>
           </TabsContent>
 
           <TabsContent value="settings" className="space-y-6">
