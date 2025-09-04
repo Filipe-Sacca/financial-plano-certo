@@ -5,6 +5,8 @@ import {
   Activity,
   Clock,
   ShoppingBag,
+  Star,
+  Truck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -19,6 +21,8 @@ export const Sidebar = ({ activeModule, onModuleChange }: SidebarProps) => {
     { id: 'menu-management', label: 'Gestão Menu', icon: Utensils },
     { id: 'ifood-api', label: 'API iFood', icon: Settings },
     { id: 'ifood-orders', label: 'Pedidos iFood', icon: ShoppingBag },
+    { id: 'ifood-reviews', label: 'Avaliações', icon: Star },
+    { id: 'ifood-shipping', label: 'Entregas', icon: Truck },
     { id: 'store-monitoring', label: 'Monitoramento', icon: Activity },
     { id: 'opening-hours', label: 'Horários', icon: Clock },
   ];

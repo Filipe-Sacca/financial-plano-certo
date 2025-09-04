@@ -14,6 +14,12 @@ export interface IntegrationStatus {
     updated_at: string;
     user_id: string;
   } | null;
+  ifoodMerchant?: {
+    id: string;
+    merchant_id: string;
+    name: string;
+    user_id: string;
+  } | null;
   lastChecked: Date;
 }
 
@@ -25,6 +31,7 @@ export const useIntegrationCheck = (userId?: string) => {
         return {
           hasIfoodIntegration: false,
           ifoodToken: null,
+          ifoodMerchant: null,
           lastChecked: new Date()
         };
       }
@@ -41,6 +48,19 @@ export const useIntegrationCheck = (userId?: string) => {
 
         if (ifoodError) {
           console.error('❌ Erro ao verificar integração iFood:', ifoodError);
+        }
+
+        // Buscar merchant do iFood se houver token
+        let ifoodMerchantData = null;
+        if (ifoodData?.access_token) {
+          const { data: merchantData } = await supabase
+            .from('ifood_merchants')
+            .select('*')
+            .eq('user_id', userId)
+            .maybeSingle();
+          
+          ifoodMerchantData = merchantData;
+          logger.debug('🏪 Merchant iFood encontrado:', merchantData);
         }
 
         const hasIfoodIntegration = !!ifoodData?.access_token;
@@ -115,6 +135,7 @@ export const useIntegrationCheck = (userId?: string) => {
         return {
           hasIfoodIntegration,
           ifoodToken: ifoodData,
+          ifoodMerchant: ifoodMerchantData,
           lastChecked: new Date()
         };
       } catch (error) {
@@ -122,6 +143,7 @@ export const useIntegrationCheck = (userId?: string) => {
         return {
           hasIfoodIntegration: false,
           ifoodToken: null,
+          ifoodMerchant: null,
           lastChecked: new Date()
         };
       }

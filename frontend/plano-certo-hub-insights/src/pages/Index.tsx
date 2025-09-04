@@ -5,6 +5,8 @@ import { Header } from '@/components/Header';
 import { MenuManagement } from '@/components/modules/MenuManagement';
 import { IfoodApiConfig } from '@/components/modules/IfoodApiConfig';
 import IfoodOrdersManager from '@/components/modules/IfoodOrdersManager';
+import IfoodReviewsManager from '@/components/modules/IfoodReviewsManager';
+import { IfoodShippingManager } from '@/components/modules/IfoodShippingManager';
 import { StoreMonitoring } from '@/components/modules/StoreMonitoring';
 import OpeningHoursManager from '@/components/modules/OpeningHoursManager';
 import { DateRange } from 'react-day-picker';
@@ -98,6 +100,28 @@ export default function Index() {
         return <IfoodApiConfig />;
       case 'ifood-orders':
         return <IfoodOrdersManager />;
+      case 'ifood-reviews':
+        return integrationStatus?.ifoodMerchant?.merchant_id && user?.id ? (
+          <IfoodReviewsManager 
+            merchantId={integrationStatus.ifoodMerchant.merchant_id} 
+            userId={user.id} 
+          />
+        ) : (
+          <div className="flex items-center justify-center h-full">
+            <p className="text-muted-foreground">Configure a integração com o iFood para visualizar avaliações</p>
+          </div>
+        );
+      case 'ifood-shipping':
+        return integrationStatus?.ifoodMerchant?.merchant_id && user?.id ? (
+          <IfoodShippingManager 
+            merchantId={integrationStatus.ifoodMerchant.merchant_id} 
+            userId={user.id} 
+          />
+        ) : (
+          <div className="flex items-center justify-center h-full">
+            <p className="text-muted-foreground">Configure a integração com o iFood para gerenciar entregas</p>
+          </div>
+        );
       case 'store-monitoring':
         return <StoreMonitoring />;
       case 'opening-hours':
