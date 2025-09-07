@@ -26,6 +26,7 @@ export type OrderStatus =
   | 'CONFIRMED' 
   | 'PREPARING' 
   | 'READY' 
+  | 'READY_FOR_PICKUP'
   | 'DISPATCHED' 
   | 'DELIVERED' 
   | 'CANCELLED';
@@ -399,6 +400,8 @@ export interface ServiceResult<T = any> {
     executionTimeMs: number;
     timestamp: string;
     version: string;
+    previousStatus?: string;
+    [key: string]: any;
   };
 }
 

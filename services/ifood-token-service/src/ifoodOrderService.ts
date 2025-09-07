@@ -237,6 +237,118 @@ export class IFoodOrderService {
   }
 
   /**
+   * Get valid access token for a merchant
+   */
+  private async getValidAccessToken(merchantId: string): Promise<{ accessToken?: string }> {
+    try {
+      // Get merchant data to find user_id
+      const { data: merchantData, error: merchantError } = await this.supabase
+        .from('ifood_merchants')
+        .select('user_id')
+        .eq('merchant_id', merchantId)
+        .single();
+
+      if (merchantError || !merchantData) {
+        console.error('❌ [ORDER-SERVICE] Merchant not found:', merchantId);
+        return {};
+      }
+
+      // Get token for this user
+      const { data: tokenData, error: tokenError } = await this.supabase
+        .from('ifood_tokens')
+        .select('*')
+        .eq('user_id', merchantData.user_id)
+        .maybeSingle();
+
+      if (tokenError || !tokenData) {
+        console.error('❌ [ORDER-SERVICE] Token not found for user:', merchantData.user_id);
+        return {};
+      }
+
+      return { accessToken: tokenData.access_token };
+    } catch (error: any) {
+      console.error('❌ [ORDER-SERVICE] Error getting access token:', error.message);
+      return {};
+    }
+  }
+
+  /**
+   * Send status update to iFood API
+   */
+  private async sendStatusUpdateToIfood(
+    ifoodOrderId: string, 
+    newStatus: OrderEntity['status'],
+    merchantId: string
+  ): Promise<boolean> {
+    try {
+      // Get current access token
+      const tokenResult = await this.getValidAccessToken(merchantId);
+      if (!tokenResult.accessToken) {
+        console.error('❌ [ORDER-SERVICE] No valid access token for iFood API');
+        return false;
+      }
+
+      // Map our status to iFood API endpoints
+      let endpoint = '';
+      let method = 'POST';
+      
+      switch (newStatus) {
+        case 'PREPARING':
+          // iFood uses "start preparation" event
+          endpoint = `/order/v1.0/orders/${ifoodOrderId}/startPreparation`;
+          break;
+        case 'READY_FOR_PICKUP':
+          // iFood uses "ready to pickup" event
+          endpoint = `/order/v1.0/orders/${ifoodOrderId}/readyToPickup`;
+          break;
+        case 'DISPATCHED':
+          // iFood uses "dispatch" event (for own delivery)
+          endpoint = `/order/v1.0/orders/${ifoodOrderId}/dispatch`;
+          break;
+        case 'DELIVERED':
+          // iFood uses "conclude" event
+          endpoint = `/order/v1.0/orders/${ifoodOrderId}/conclude`;
+          break;
+        case 'CANCELLED':
+          // For cancellation, we use a different endpoint
+          endpoint = `/order/v1.0/orders/${ifoodOrderId}/requestCancellation`;
+          break;
+        default:
+          console.log(`ℹ️ [ORDER-SERVICE] No iFood API call needed for status: ${newStatus}`);
+          return true;
+      }
+
+      if (!endpoint) {
+        return true;
+      }
+
+      // Make the API call to iFood
+      console.log(`🌐 [ORDER-SERVICE] Calling iFood API: ${method} https://merchant-api.ifood.com.br${endpoint}`);
+      console.log(`🔑 [ORDER-SERVICE] Using token: ${tokenResult.accessToken?.substring(0, 20)}...`);
+      
+      const response = await axios({
+        method,
+        url: `https://merchant-api.ifood.com.br${endpoint}`,
+        headers: {
+          'Authorization': `Bearer ${tokenResult.accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        data: method === 'POST' ? {} : undefined
+      });
+
+      console.log(`📥 [ORDER-SERVICE] iFood API Response Status: ${response.status}`);
+      console.log(`📦 [ORDER-SERVICE] iFood API Response Data:`, response.data);
+      console.log(`✅ [ORDER-SERVICE] iFood API status update sent: ${newStatus} for order ${ifoodOrderId}`);
+      return true;
+      
+    } catch (error: any) {
+      console.error(`❌ [ORDER-SERVICE] Failed to update status in iFood API:`, error.response?.data || error.message);
+      // Don't fail the whole operation if iFood API fails
+      return false;
+    }
+  }
+
+  /**
    * Update order status
    */
   async updateOrderStatus(
@@ -244,9 +356,24 @@ export class IFoodOrderService {
     newStatus: OrderEntity['status'],
     userId: string,
     additionalData?: Partial<OrderEntity>
-  ): Promise<ServiceResult<{ updated: boolean }>> {
+  ): Promise<ServiceResult<{ updated: boolean; ifoodApiUpdated?: boolean }>> {
     try {
       console.log(`🔄 [ORDER-SERVICE] Updating order ${ifoodOrderId} status to ${newStatus}`);
+
+      // First, get the order to get merchantId
+      const { data: orderData, error: fetchError } = await this.supabase
+        .from('ifood_orders')
+        .select('merchant_id, status')
+        .eq('ifood_order_id', ifoodOrderId)
+        .eq('user_id', userId)
+        .single();
+
+      if (fetchError || !orderData) {
+        return {
+          success: false,
+          error: `Order not found: ${fetchError?.message || 'Unknown error'}`
+        };
+      }
 
       // Prepare update data
       const updateData: any = {
@@ -254,7 +381,7 @@ export class IFoodOrderService {
         updated_at: new Date().toISOString()
       };
 
-      // Add status-specific timestamps
+      // Add status-specific timestamps (only for existing columns)
       if (newStatus === 'CONFIRMED') {
         updateData.confirmed_at = new Date().toISOString();
       } else if (newStatus === 'DELIVERED') {
@@ -274,6 +401,7 @@ export class IFoodOrderService {
         Object.assign(updateData, additionalData);
       }
 
+      // Update in database
       const { data, error } = await this.supabase
         .from('ifood_orders')
         .update(updateData)
@@ -290,14 +418,26 @@ export class IFoodOrderService {
         };
       }
 
-      console.log(`✅ [ORDER-SERVICE] Order ${ifoodOrderId} status updated to ${newStatus}`);
+      // Send update to iFood API
+      const ifoodApiUpdated = await this.sendStatusUpdateToIfood(
+        ifoodOrderId, 
+        newStatus, 
+        orderData.merchant_id
+      );
+
+      console.log(`✅ [ORDER-SERVICE] Order ${ifoodOrderId} status updated to ${newStatus} (iFood API: ${ifoodApiUpdated ? 'success' : 'failed'})`);
+      
       return {
         success: true,
-        data: { updated: true },
+        data: { 
+          updated: true,
+          ifoodApiUpdated 
+        },
         metadata: {
           executionTimeMs: 0,
           timestamp: new Date().toISOString(),
-          version: '1.0.0'
+          version: '1.0.0',
+          previousStatus: orderData.status
         }
       };
     } catch (error: any) {

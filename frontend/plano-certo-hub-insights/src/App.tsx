@@ -8,6 +8,7 @@ import NotFound from "./pages/NotFound";
 import Login from "./pages/auth/Login";
 import Register from "./pages/auth/Register";
 import Recuperar from "./pages/auth/Recuperar";
+import { DeliveryTracking } from "./pages/DeliveryTracking";
 import { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import NavigationLogger from "@/components/NavigationLogger";
@@ -95,6 +96,8 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+            {/* Rota pública para entregadores */}
+            <Route path="/delivery/:orderId" element={<DeliveryTracking />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

@@ -1,5 +1,6 @@
 
 import { useState, useMemo, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Sidebar } from '@/components/Sidebar';
 import { Header } from '@/components/Header';
 import { MenuManagement } from '@/components/modules/MenuManagement';
@@ -17,13 +18,27 @@ import { toast } from '@/components/ui/use-toast';
 
 export default function Index() {
   const { user } = useAuth();
+  const location = useLocation();
   const [activeModule, setActiveModule] = useState('menu-management');
   const [selectedClient, setSelectedClient] = useState('all');
   const [selectedPeriod, setSelectedPeriod] = useState('30d');
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
+  const [highlightOrder, setHighlightOrder] = useState<string | null>(null);
   
   // Verificar integrações ativas do usuário
   const { data: integrationStatus, isLoading: isCheckingIntegration } = useIntegrationCheck(user?.id);
+
+  // Handle navigation from Orders to Shipping
+  useEffect(() => {
+    if (location.state?.activeModule === 'shipping') {
+      setActiveModule('ifood-shipping');
+      if (location.state?.highlightOrder) {
+        setHighlightOrder(location.state.highlightOrder);
+      }
+      // Clear navigation state
+      window.history.replaceState({}, document.title);
+    }
+  }, [location]);
 
   // Mostrar notificações sobre o status das integrações
   useEffect(() => {
@@ -114,7 +129,8 @@ export default function Index() {
       case 'ifood-shipping':
         return integrationStatus?.ifoodMerchant?.merchant_id && user?.id ? (
           <IfoodShippingManager 
-            merchantId={integrationStatus.ifoodMerchant.merchant_id} 
+            merchantId={integrationStatus.ifoodMerchant.merchant_id}
+            highlightOrder={highlightOrder} 
             userId={user.id} 
           />
         ) : (

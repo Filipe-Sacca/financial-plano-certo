@@ -37,8 +37,10 @@ import {
   Pause,
   ExternalLink,
   MapPinned,
-  DollarSign
+  DollarSign,
+  Map
 } from 'lucide-react';
+import { ShippingMap } from './ShippingMap';
 
 // Type definitions
 interface ShippingStatus {
@@ -102,10 +104,12 @@ interface ActiveShipment {
 
 export function IfoodShippingManager({ 
   merchantId, 
-  userId 
+  userId,
+  highlightOrder 
 }: { 
   merchantId: string; 
   userId: string;
+  highlightOrder?: string | null;
 }) {
   const { toast } = useToast();
   const [isPolling, setIsPolling] = useState(false);
@@ -114,6 +118,7 @@ export function IfoodShippingManager({
   const [selectedShipment, setSelectedShipment] = useState<ActiveShipment | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('active');
+  const [showMapFor, setShowMapFor] = useState<string | null>(null);
   
   // Form states for status update
   const [statusForm, setStatusForm] = useState({
@@ -129,14 +134,19 @@ export function IfoodShippingManager({
     additionalFee: 0
   });
 
-  // Load active shipments
+  // Load active shipments (only those with delivery person assigned)
   const loadActiveShipments = useCallback(async () => {
     try {
-      const response = await fetch(`http://localhost:8085/shipping/active?merchantId=${merchantId}`);
+      const response = await fetch(`http://localhost:8085/shipping/active?merchantId=${merchantId}&hasDriver=true`);
       const result = await response.json();
       
       if (result.success) {
-        setActiveShipments(result.data);
+        // Filter to show only shipments that have been dispatched or beyond
+        const shippingStatuses = ['DISPATCHED', 'DRIVER_NEAR', 'ARRIVED_AT_PICKUP', 'IN_TRANSIT', 'ARRIVED_AT_DELIVERY'];
+        const filteredShipments = result.data.filter((shipment: ActiveShipment) => 
+          shippingStatuses.includes(shipment.status) || shipment.deliveryPersonName
+        );
+        setActiveShipments(filteredShipments);
       } else {
         console.error('Failed to load active shipments:', result.error);
       }
@@ -414,6 +424,36 @@ export function IfoodShippingManager({
     loadPendingAddressChanges();
   }, [loadActiveShipments, loadPendingAddressChanges]);
 
+  // Handle highlighted order from navigation
+  useEffect(() => {
+    if (highlightOrder && activeShipments.length > 0) {
+      const shipmentToHighlight = activeShipments.find(
+        s => s.orderId === highlightOrder || s.externalId === highlightOrder
+      );
+      
+      if (shipmentToHighlight) {
+        // Show map for this shipment
+        setShowMapFor(shipmentToHighlight.orderId || shipmentToHighlight.externalId || null);
+        
+        // Show toast notification
+        toast({
+          title: "🚚 Entrega Localizada",
+          description: `Visualizando entrega do pedido ${highlightOrder.substring(0, 8)}...`,
+        });
+        
+        // Scroll to the shipment in the list (if needed)
+        const element = document.getElementById(`shipment-${highlightOrder}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          element.classList.add('ring-2', 'ring-orange-500', 'ring-offset-2');
+          setTimeout(() => {
+            element.classList.remove('ring-2', 'ring-orange-500', 'ring-offset-2');
+          }, 3000);
+        }
+      }
+    }
+  }, [highlightOrder, activeShipments, toast]);
+
   // Get status badge color
   const getStatusColor = (status: string) => {
     const statusColors: Record<string, string> = {
@@ -511,7 +551,7 @@ export function IfoodShippingManager({
           </div>
         </div>
         <CardDescription>
-          Monitor and manage shipping operations for platform and external orders
+          Monitor deliveries in progress with assigned drivers
         </CardDescription>
       </CardHeader>
 
@@ -529,17 +569,22 @@ export function IfoodShippingManager({
           <TabsContent value="active" className="space-y-4">
             {activeShipments.length === 0 ? (
               <Alert>
-                <Package className="h-4 w-4" />
-                <AlertTitle>No Active Shipments</AlertTitle>
+                <Truck className="h-4 w-4" />
+                <AlertTitle>No Deliveries in Progress</AlertTitle>
                 <AlertDescription>
-                  There are no active shipments at the moment.
+                  There are no orders with assigned drivers at the moment.
+                  Orders will appear here once a driver has been assigned.
                 </AlertDescription>
               </Alert>
             ) : (
               <ScrollArea className="h-[600px] w-full">
                 <div className="space-y-4">
                   {activeShipments.map((shipment) => (
-                    <Card key={shipment.id} className="p-4">
+                    <Card 
+                      key={shipment.id} 
+                      id={`shipment-${shipment.orderId || shipment.externalId}`}
+                      className="p-4 transition-all duration-300"
+                    >
                       <div className="space-y-3">
                         {/* Header */}
                         <div className="flex items-center justify-between">
@@ -616,6 +661,18 @@ export function IfoodShippingManager({
                           <Button
                             size="sm"
                             variant="outline"
+                            onClick={() => {
+                              const showMap = selectedShipment?.id === shipment.id && showMapFor === shipment.id;
+                              setShowMapFor(showMap ? null : shipment.id);
+                              if (!showMap) setSelectedShipment(shipment);
+                            }}
+                          >
+                            <Map className="h-4 w-4 mr-1" />
+                            {showMapFor === shipment.id ? 'Hide Map' : 'Show Map'}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
                             onClick={() => getSafeDeliveryScore(shipment)}
                           >
                             <Shield className="h-4 w-4 mr-1" />
@@ -632,6 +689,40 @@ export function IfoodShippingManager({
                             </Button>
                           )}
                         </div>
+
+                        {/* Map View */}
+                        {showMapFor === shipment.id && (
+                          <div className="mt-4">
+                            <ShippingMap 
+                              shipment={{
+                                orderId: shipment.orderId,
+                                externalId: shipment.externalId,
+                                status: shipment.status,
+                                estimatedDeliveryTime: shipment.estimatedDeliveryTime,
+                                // Mock data for demo - in production these would come from the API
+                                restaurantLocation: {
+                                  lat: -23.550520,
+                                  lng: -46.633308,
+                                  name: "Restaurant",
+                                  address: merchantId
+                                },
+                                customerLocation: {
+                                  lat: -23.560520 + (Math.random() - 0.5) * 0.02,
+                                  lng: -46.643308 + (Math.random() - 0.5) * 0.02,
+                                  name: "Customer",
+                                  address: "Delivery Address"
+                                },
+                                deliveryPersonLocation: shipment.deliveryPersonName ? {
+                                  lat: -23.555520 + (Math.random() - 0.5) * 0.01,
+                                  lng: -46.638308 + (Math.random() - 0.5) * 0.01,
+                                  name: shipment.deliveryPersonName,
+                                  phone: shipment.deliveryPersonPhone || '',
+                                  vehicleType: shipment.vehicleType
+                                } : undefined
+                              }}
+                            />
+                          </div>
+                        )}
 
                         {/* Status Update Form */}
                         {selectedShipment?.id === shipment.id && (

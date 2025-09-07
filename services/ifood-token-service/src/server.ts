@@ -2442,6 +2442,134 @@ app.get('/orders/:merchantId/completed', async (req, res) => {
   }
 });
 
+// Fetch and Update Order Details (including items from iFood)
+app.post('/orders/:orderId/fetch-details', async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { userId } = req.body;
+    
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'userId is required'
+      });
+    }
+
+    console.log(`📦 [API] Fetching complete order details for: ${orderId}`);
+    
+    // Get token for API calls
+    const tokenData = await getTokenForUser(userId);
+    if (!tokenData || !tokenData.access_token) {
+      return res.status(401).json({
+        success: false,
+        error: 'No valid token found for user'
+      });
+    }
+
+    // Try to get order details from iFood API (virtual-bag endpoint)
+    try {
+      const virtualBagResponse = await fetch(
+        `https://merchant-api.ifood.com.br/order/v1.0/orders/${orderId}/virtual-bag`,
+        {
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${tokenData.access_token}`
+          }
+        }
+      );
+
+      if (virtualBagResponse.ok) {
+        const orderData: any = await virtualBagResponse.json();
+        
+        // Update order in database with complete data
+        const { error: updateError } = await supabase
+          .from('ifood_orders')
+          .update({
+            order_data: orderData,
+            virtual_bag_data: orderData,
+            // Update financial values from the API response
+            total_amount: orderData.total?.orderAmount || orderData.totalPrice || null,
+            delivery_fee: orderData.total?.deliveryFee || orderData.deliveryFee || null,
+            customer_name: orderData.customer?.name || null,
+            customer_phone: orderData.customer?.phone?.number || orderData.customer?.phoneNumber || null,
+            updated_at: new Date().toISOString()
+          })
+          .eq('ifood_order_id', orderId)
+          .eq('user_id', userId);
+
+        if (updateError) {
+          console.error(`❌ [API] Error updating order data:`, updateError);
+        } else {
+          console.log(`✅ [API] Order ${orderId} updated with complete details including items`);
+        }
+
+        res.json({
+          success: true,
+          message: 'Order details fetched and updated successfully',
+          data: orderData
+        });
+      } else {
+        // If virtual-bag fails, try standard order endpoint
+        const orderResponse = await fetch(
+          `https://merchant-api.ifood.com.br/order/v1.0/orders/${orderId}`,
+          {
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${tokenData.access_token}`
+            }
+          }
+        );
+
+        if (orderResponse.ok) {
+          const orderData: any = await orderResponse.json();
+          
+          // Update order in database
+          await supabase
+            .from('ifood_orders')
+            .update({
+              order_data: orderData,
+              // Update financial values from the API response
+              total_amount: orderData.total?.orderAmount || orderData.totalPrice || null,
+              delivery_fee: orderData.total?.deliveryFee || orderData.deliveryFee || null,
+              customer_name: orderData.customer?.name || null,
+              customer_phone: orderData.customer?.phone?.number || orderData.customer?.phoneNumber || null,
+              updated_at: new Date().toISOString()
+            })
+            .eq('ifood_order_id', orderId)
+            .eq('user_id', userId);
+
+          res.json({
+            success: true,
+            message: 'Order details fetched successfully (standard endpoint)',
+            data: orderData
+          });
+        } else {
+          res.status(404).json({
+            success: false,
+            error: 'Could not fetch order details from iFood'
+          });
+        }
+      }
+    } catch (apiError: any) {
+      console.error(`❌ [API] Error fetching order details:`, apiError);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch order details',
+        message: apiError.message
+      });
+    }
+  } catch (error: any) {
+    console.error('❌ Error in fetch-details endpoint:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+      message: error.message
+    });
+  }
+});
+
 // Get Order Detail
 app.get('/orders/:merchantId/:orderId', async (req, res) => {
   try {
@@ -2581,15 +2709,101 @@ app.post('/orders/:orderId/confirm', async (req, res) => {
       throw new Error(`Não foi possível confirmar o pedido no iFood: ${apiError.message}`);
     }
     
-    const result = { success: true, message: 'Order confirmed successfully on iFood and local database' };
+    // Após confirmar com sucesso, automaticamente iniciar preparação
+    console.log(`🔄 [API] Auto-starting preparation for order ${orderId}...`);
+    
+    // Aguardar um pequeno delay para garantir que a confirmação foi processada
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Tentar iniciar preparação automaticamente
+    let preparationStarted = false;
+    let finalStatus = 'CONFIRMED';
+    
+    try {
+      console.log(`🍳 [IFOOD-API] Starting preparation for order ${orderId} via iFood API...`);
+      
+      const prepareResponse = await fetch(`https://merchant-api.ifood.com.br/order/v1.0/orders/${orderId}/startPreparation`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${tokenData.access_token}`
+        },
+        body: JSON.stringify({})
+      });
+      
+      if (prepareResponse.ok) {
+        console.log(`✅ [IFOOD-API] Order ${orderId} preparation started successfully on iFood`);
+        
+        // Atualizar status local para PREPARING
+        await orderService.updateOrderStatus(orderId, 'PREPARING', userId);
+        preparationStarted = true;
+        finalStatus = 'PREPARING';
+        
+        // Registrar evento de preparação
+        try {
+          // Buscar merchant_id do pedido
+          const { data: orderData } = await supabase
+            .from('ifood_orders')
+            .select('merchant_id')
+            .eq('ifood_order_id', orderId)
+            .single();
+          
+          const prepEvent = {
+            event_id: `prep-auto-${orderId}-${Date.now()}`,
+            user_id: userId,
+            merchant_id: orderData?.merchant_id,
+            event_type: 'STATUS_CHANGE',
+            event_category: 'ORDER',
+            event_data: {
+              id: `prep-${orderId}-${Date.now()}`,
+              code: 'PREPARING',
+              orderId: orderId,
+              createdAt: new Date().toISOString(),
+              source: 'AUTO_AFTER_CONFIRM'
+            },
+            raw_response: {
+              source: 'AUTO_PREPARATION',
+              orderId: orderId,
+              status: 'PREPARING'
+            },
+            received_at: new Date().toISOString(),
+            acknowledged_at: new Date().toISOString(),
+            acknowledgment_success: true,
+            processing_status: 'COMPLETED',
+            created_at: new Date().toISOString()
+          };
+          
+          await supabase.from('ifood_events').insert(prepEvent);
+          console.log(`📝 [EVENT-LOG] Auto-preparation event registered for order ${orderId}`);
+        } catch (eventError) {
+          console.error(`⚠️ [EVENT-LOG] Error logging preparation event:`, eventError);
+        }
+      } else {
+        const errorData = await prepareResponse.json().catch(() => ({}));
+        console.warn(`⚠️ [IFOOD-API] Could not auto-start preparation: ${prepareResponse.status} - ${(errorData as any).message || 'Unknown'}`);
+        console.log(`ℹ️ [API] Order confirmed but preparation must be started manually`);
+      }
+    } catch (prepError: any) {
+      console.warn(`⚠️ [API] Auto-preparation failed:`, prepError.message);
+      console.log(`ℹ️ [API] Order confirmed but preparation must be started manually`);
+    }
+    
+    const result = { 
+      success: true, 
+      message: preparationStarted 
+        ? 'Order confirmed and preparation started automatically' 
+        : 'Order confirmed successfully (preparation must be started manually)'
+    };
     
     if (result.success) {
-      console.log(`✅ [API] Order ${orderId} confirmed successfully`);
+      console.log(`✅ [API] Order ${orderId} confirmed${preparationStarted ? ' and preparation started' : ''} successfully`);
       res.json({
         success: true,
-        message: 'Order confirmed successfully',
+        message: result.message,
         orderId,
-        status: 'CONFIRMED',
+        status: finalStatus,
+        autoPreparationStarted: preparationStarted,
         timestamp: new Date().toISOString()
       });
     } else {
@@ -2787,6 +3001,108 @@ app.post('/orders/:orderId/complete', async (req, res) => {
       success: false,
       error: 'Internal server error',
       message: error.message
+    });
+  }
+});
+
+// Update order status endpoint
+app.put('/orders/:orderId/status', async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { userId, status } = req.body;
+    
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'userId is required in request body'
+      });
+    }
+
+    if (!status) {
+      return res.status(400).json({
+        success: false,
+        error: 'status is required in request body'
+      });
+    }
+
+    // Validate status
+    const validStatuses = ['PENDING', 'PREPARING', 'READY_FOR_PICKUP', 'CONFIRMED', 'DISPATCHED', 'DELIVERED', 'CANCELLED'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid status. Valid statuses are: ${validStatuses.join(', ')}`
+      });
+    }
+
+    console.log(`🔄 [API] Updating order ${orderId} status to ${status} for user: ${userId}`);
+    
+    initializeOrderServices();
+    
+    // Update order status in database
+    const result = await orderService.updateOrderStatus(orderId, status, userId);
+    
+    if (result.success) {
+      // Register status change event in ifood_events table for audit trail
+      try {
+        const statusEvent = {
+          event_id: `status-${orderId}-${status}-${Date.now()}`,
+          user_id: userId,
+          merchant_id: (await supabase.from('ifood_orders').select('merchant_id').eq('ifood_order_id', orderId).single()).data?.merchant_id,
+          event_type: 'STATUS_CHANGE',
+          event_category: 'ORDER',
+          event_data: {
+            id: `status-${orderId}-${Date.now()}`,
+            code: status,
+            orderId: orderId,
+            previousStatus: result.metadata?.previousStatus || 'UNKNOWN',
+            newStatus: status,
+            createdAt: new Date().toISOString(),
+            source: 'MERCHANT_ACTION'
+          },
+          raw_response: {
+            source: 'MERCHANT_STATUS_UPDATE',
+            orderId: orderId,
+            newStatus: status,
+            updatedAt: new Date().toISOString(),
+            updatedBy: 'MERCHANT'
+          },
+          received_at: new Date().toISOString(),
+          acknowledged_at: new Date().toISOString(),
+          acknowledgment_success: true,
+          processing_status: 'COMPLETED',
+          created_at: new Date().toISOString()
+        };
+
+        await supabase.from('ifood_events').insert(statusEvent);
+        console.log(`📝 Status change event recorded for order ${orderId} -> ${status}`);
+      } catch (eventError) {
+        console.error('⚠️ Error recording status change event:', eventError);
+        // Don't fail the whole operation if event recording fails
+      }
+
+      res.json({
+        success: true,
+        data: {
+          orderId,
+          newStatus: status,
+          updatedAt: new Date().toISOString(),
+          ifoodApiUpdated: result.data?.ifoodApiUpdated,
+          previousStatus: result.metadata?.previousStatus
+        },
+        message: `Order status updated to ${status}${result.data?.ifoodApiUpdated === false ? ' (iFood API update failed - will retry)' : ''}`
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: result.error || 'Failed to update order status'
+      });
+    }
+    
+  } catch (error: any) {
+    console.error(`❌ Error updating order status:`, error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error'
     });
   }
 });
@@ -4383,6 +4699,7 @@ app.listen(PORT, () => {
   console.log(`✅ Confirm order: POST http://localhost:${PORT}/orders/:orderId/confirm`);
   console.log(`🚫 Cancel order: POST http://localhost:${PORT}/orders/:orderId/cancel`);
   console.log(`🏁 Complete order: POST http://localhost:${PORT}/orders/:orderId/complete`);
+  console.log(`🔄 Update order status: PUT http://localhost:${PORT}/orders/:orderId/status`);
   console.log(`📋 Completed orders: GET http://localhost:${PORT}/orders/:merchantId/completed?userId=USER_ID`);
   console.log('📊 Testing & Performance Endpoints:');
   console.log(`🧪 Test polling: POST http://localhost:${PORT}/orders/test/polling`);

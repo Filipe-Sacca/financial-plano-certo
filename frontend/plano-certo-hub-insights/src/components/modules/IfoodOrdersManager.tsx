@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   ShoppingBag, 
   Play, 
@@ -20,7 +21,11 @@ import {
   Check,
   X,
   Package,
-  Loader2
+  Loader2,
+  Truck,
+  ShoppingCart,
+  DollarSign,
+  MapPin
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -68,6 +73,7 @@ interface Event {
 }
 
 const IfoodOrdersManager: React.FC = () => {
+  const navigate = useNavigate();
   const [pollingStatus, setPollingStatus] = useState<PollingStatus | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [completedOrders, setCompletedOrders] = useState<Order[]>([]);
@@ -75,6 +81,9 @@ const IfoodOrdersManager: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [loadingCompleted, setLoadingCompleted] = useState(false);
   const [selectedMerchant, setSelectedMerchant] = useState<string>('577cb3b1-5845-4fbc-a219-8cd3939cb9ea');
+  const [selectedOrder, setSelectedOrder] = useState<any>(null);
+  const [showOrderDetails, setShowOrderDetails] = useState(false);
+  const [loadingOrderDetails, setLoadingOrderDetails] = useState(false);
   const userId = 'c1488646-aca8-4220-aacc-00e7ae3d6490'; // Real user ID from database
   const { toast } = useToast();
 
@@ -223,7 +232,9 @@ const IfoodOrdersManager: React.FC = () => {
     const colors: Record<string, string> = {
       'PENDING': 'bg-yellow-100 text-yellow-800 border-yellow-200',      // Aguardando preparo
       'PREPARING': 'bg-orange-100 text-orange-800 border-orange-200',    // Em preparo
-      'CONFIRMED': 'bg-blue-100 text-blue-800 border-blue-200',          // Pronto para entrega  
+      'READY_FOR_PICKUP': 'bg-purple-100 text-purple-800 border-purple-200', // Pronto para retirada
+      'CONFIRMED': 'bg-blue-100 text-blue-800 border-blue-200',          // Confirmado
+      'DISPATCHED': 'bg-indigo-100 text-indigo-800 border-indigo-200',   // Despachado para entrega
       'DELIVERED': 'bg-green-100 text-green-800 border-green-200',       // Entregue
       'CANCELLED': 'bg-red-100 text-red-800 border-red-200'              // Cancelado
     };
@@ -231,7 +242,7 @@ const IfoodOrdersManager: React.FC = () => {
   };
 
   // Action handlers - IMPLEMENTAÇÃO REAL
-  const [loadingActions, setLoadingActions] = useState<Record<string, 'confirming' | 'cancelling' | 'completing' | null>>({});
+  const [loadingActions, setLoadingActions] = useState<Record<string, 'confirming' | 'cancelling' | 'completing' | 'preparing' | 'ready' | 'dispatching' | null>>({});
 
   const handleConfirmOrder = async (orderId: string) => {
     try {
@@ -250,9 +261,18 @@ const IfoodOrdersManager: React.FC = () => {
       console.log('📋 Resultado da confirmação:', result);
       
       if (result.success) {
+        // Verificar se a preparação foi iniciada automaticamente
+        const statusMessage = result.autoPreparationStarted 
+          ? "✅ Pedido Confirmado e Preparação Iniciada"
+          : "✅ Pedido Confirmado";
+        
+        const descriptionMessage = result.autoPreparationStarted
+          ? `Pedido ${orderId.substring(0, 8)}... confirmado e já está sendo preparado!`
+          : `Pedido ${orderId.substring(0, 8)}... confirmado com sucesso!`;
+        
         toast({
-          title: "✅ Pedido Confirmado",
-          description: `Pedido ${orderId.substring(0, 8)}... confirmado com sucesso!`
+          title: statusMessage,
+          description: descriptionMessage
         });
         
         // Refresh orders list
@@ -351,6 +371,185 @@ const IfoodOrdersManager: React.FC = () => {
     } finally {
       setLoadingActions(prev => ({ ...prev, [orderId]: null }));
     }
+  };
+
+  // Change order to PREPARING status
+  const handleStartPreparing = async (orderId: string) => {
+    try {
+      console.log('👨‍🍳 Iniciando preparo:', orderId);
+      setLoadingActions(prev => ({ ...prev, [orderId]: 'preparing' }));
+      
+      const response = await fetch(`${API_BASE}/orders/${orderId}/status`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          userId,
+          status: 'PREPARING' 
+        }),
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        toast({
+          title: "👨‍🍳 Preparo Iniciado",
+          description: `Pedido ${orderId.substring(0, 8)}... está sendo preparado!`
+        });
+        await fetchOrders();
+      } else {
+        throw new Error(result.error || 'Erro ao iniciar preparo');
+      }
+    } catch (error: any) {
+      console.error('❌ Erro ao iniciar preparo:', error);
+      toast({
+        title: "❌ Erro",
+        description: `Erro ao iniciar preparo: ${error.message}`,
+        variant: "destructive"
+      });
+    } finally {
+      setLoadingActions(prev => ({ ...prev, [orderId]: null }));
+    }
+  };
+
+  // Change order to READY_FOR_PICKUP status
+  const handleReadyForPickup = async (orderId: string) => {
+    try {
+      console.log('📦 Marcando como pronto:', orderId);
+      setLoadingActions(prev => ({ ...prev, [orderId]: 'ready' }));
+      
+      const response = await fetch(`${API_BASE}/orders/${orderId}/status`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          userId,
+          status: 'READY_FOR_PICKUP' 
+        }),
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        toast({
+          title: "📦 Pronto para Retirada",
+          description: `Pedido ${orderId.substring(0, 8)}... está pronto para ser retirado!`
+        });
+        await fetchOrders();
+      } else {
+        throw new Error(result.error || 'Erro ao marcar como pronto');
+      }
+    } catch (error: any) {
+      console.error('❌ Erro ao marcar como pronto:', error);
+      toast({
+        title: "❌ Erro",
+        description: `Erro ao marcar como pronto: ${error.message}`,
+        variant: "destructive"
+      });
+    } finally {
+      setLoadingActions(prev => ({ ...prev, [orderId]: null }));
+    }
+  };
+
+  // Change order to DISPATCHED status
+  const handleDispatchOrder = async (orderId: string) => {
+    try {
+      console.log('🚚 Despachando pedido:', orderId);
+      setLoadingActions(prev => ({ ...prev, [orderId]: 'dispatching' }));
+      
+      const response = await fetch(`${API_BASE}/orders/${orderId}/status`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          userId,
+          status: 'DISPATCHED' 
+        }),
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        toast({
+          title: "🚚 Pedido Despachado",
+          description: `Pedido ${orderId.substring(0, 8)}... foi enviado para entrega!`
+        });
+        await fetchOrders();
+      } else {
+        throw new Error(result.error || 'Erro ao despachar pedido');
+      }
+    } catch (error: any) {
+      console.error('❌ Erro ao despachar pedido:', error);
+      toast({
+        title: "❌ Erro",
+        description: `Erro ao despachar pedido: ${error.message}`,
+        variant: "destructive"
+      });
+    } finally {
+      setLoadingActions(prev => ({ ...prev, [orderId]: null }));
+    }
+  };
+
+  // View order details with items
+  const handleViewOrderDetails = async (order: any) => {
+    try {
+      console.log('👁️ Viewing order details:', order.ifood_order_id);
+      setLoadingOrderDetails(true);
+      setSelectedOrder(order);
+      setShowOrderDetails(true);
+      
+      // Fetch complete order details including items
+      const response = await fetch(`${API_BASE}/orders/${order.ifood_order_id}/fetch-details`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userId }),
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          // Update selected order with complete data
+          setSelectedOrder({
+            ...order,
+            order_data: result.data,
+            virtual_bag_data: result.data
+          });
+          
+          // Refresh orders list to get updated data
+          await fetchOrders();
+        }
+      }
+    } catch (error: any) {
+      console.error('❌ Error fetching order details:', error);
+      toast({
+        title: "⚠️ Aviso",
+        description: "Não foi possível buscar todos os detalhes do pedido",
+        variant: "destructive"
+      });
+    } finally {
+      setLoadingOrderDetails(false);
+    }
+  };
+
+  // Navigate to Shipping module
+  const handleViewInShipping = (orderId: string) => {
+    console.log('🚚 Navigating to shipping for order:', orderId);
+    // Navigate to Shipping tab with order ID as state
+    navigate('/', { 
+      state: { 
+        activeModule: 'shipping',
+        highlightOrder: orderId 
+      } 
+    });
+    toast({
+      title: "🚚 Redirecionando",
+      description: "Abrindo módulo de entregas..."
+    });
   };
 
 
@@ -532,7 +731,7 @@ const IfoodOrdersManager: React.FC = () => {
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-2 justify-center">
-                        {/* FLUXO CORRETO: PENDING → Preparo → Confirmar → Concluir */}
+                        {/* FLUXO: PENDING → Confirmar (auto-preparo) → PREPARING → Pronto → DISPATCHED → Concluir */}
                         
                         {/* Etapa 1: Ações para pedidos PENDING */}
                         {order.status === 'PENDING' && (
@@ -553,15 +752,6 @@ const IfoodOrdersManager: React.FC = () => {
                                 <Check className="h-3 w-3 mr-1" />
                               )}
                               Confirmar
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              variant="outline"
-                              className="bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
-                              onClick={() => handleConfirmAction(order.ifood_order_id)}
-                            >
-                              <Package className="h-3 w-3 mr-1" />
-                              Iniciar Preparo
                             </Button>
                             <Button 
                               size="sm" 
@@ -590,10 +780,15 @@ const IfoodOrdersManager: React.FC = () => {
                               size="sm" 
                               variant="outline"
                               className="bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100"
-                              onClick={() => handleConfirmAction(order.ifood_order_id)}
+                              onClick={() => handleReadyForPickup(order.ifood_order_id)}
+                              disabled={!!loadingActions[order.ifood_order_id]}
                             >
-                              <Package className="h-3 w-3 mr-1" />
-                              Finalizar Preparo
+                              {loadingActions[order.ifood_order_id] === 'ready' ? (
+                                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                              ) : (
+                                <Package className="h-3 w-3 mr-1" />
+                              )}
+                              Pronto para Retirada
                             </Button>
                             <Button 
                               size="sm" 
@@ -615,28 +810,79 @@ const IfoodOrdersManager: React.FC = () => {
                           </>
                         )}
                         
-                        {/* Etapa 3: Confirmar Entrega (CONFIRMED) */}
-                        {order.status === 'CONFIRMED' && (
+                        {/* Etapa 3: Pedido Pronto para Retirada (READY_FOR_PICKUP) */}
+                        {order.status === 'READY_FOR_PICKUP' && (
+                          <>
+                            <Button 
+                              size="sm" 
+                              variant="default"
+                              className="bg-purple-600 hover:bg-purple-700 text-white cursor-pointer"
+                              onClick={() => handleDispatchOrder(order.ifood_order_id)}
+                              disabled={!!loadingActions[order.ifood_order_id]}
+                            >
+                              {loadingActions[order.ifood_order_id] === 'dispatching' ? (
+                                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                              ) : (
+                                <Truck className="h-3 w-3 mr-1" />
+                              )}
+                              Enviar para Entrega
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="destructive"
+                              className="cursor-pointer"
+                              onClick={() => handleCancelOrder(order.ifood_order_id)}
+                              disabled={!!loadingActions[order.ifood_order_id]}
+                            >
+                              {loadingActions[order.ifood_order_id] === 'cancelling' ? (
+                                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                              ) : (
+                                <X className="h-3 w-3 mr-1" />
+                              )}
+                              Cancelar
+                            </Button>
+                          </>
+                        )}
+                        
+                        {/* Etapa 5: Pedido Despachado (DISPATCHED) */}
+                        {order.status === 'DISPATCHED' && (
+                          <>
+                            <Button 
+                              size="sm" 
+                              variant="default"
+                              className="bg-green-600 hover:bg-green-700 text-white cursor-pointer"
+                              onClick={() => handleCompleteOrder(order.ifood_order_id)}
+                              disabled={!!loadingActions[order.ifood_order_id]}
+                            >
+                              {loadingActions[order.ifood_order_id] === 'completing' ? (
+                                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                              ) : (
+                                <CheckCircle2 className="h-3 w-3 mr-1" />
+                              )}
+                              Confirmar Entrega
+                            </Button>
+                          </>
+                        )}
+                        
+                        {/* Botão para Ver no módulo de Entregas quando estiver DISPATCHED ou READY_FOR_PICKUP */}
+                        {(order.status === 'DISPATCHED' || order.status === 'READY_FOR_PICKUP' || 
+                          order.order_data?.deliveryPersonName) && (
                           <Button 
                             size="sm" 
-                            variant="default"
-                            className="bg-green-600 hover:bg-green-700 text-white cursor-pointer"
-                            onClick={() => {
-                              console.log('🎯 Botão Confirmar Entrega clicado para pedido:', order.ifood_order_id);
-                              handleCompleteOrder(order.ifood_order_id);
-                            }}
-                            disabled={!!loadingActions[order.ifood_order_id]}
+                            variant="outline"
+                            className="bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100"
+                            onClick={() => handleViewInShipping(order.ifood_order_id)}
                           >
-                            {loadingActions[order.ifood_order_id] === 'completing' ? (
-                              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                            ) : (
-                              <CheckCircle2 className="h-3 w-3 mr-1" />
-                            )}
-                            Confirmar Entrega
+                            <Truck className="h-3 w-3 mr-1" />
+                            Ver Entrega
                           </Button>
                         )}
                         
-                        <Button size="sm" variant="outline">
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => handleViewOrderDetails(order)}
+                        >
                           <Eye className="h-3 w-3 mr-1" />
                           Ver
                         </Button>
@@ -825,6 +1071,186 @@ const IfoodOrdersManager: React.FC = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Order Details Modal */}
+      {showOrderDetails && selectedOrder && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+          <Card className="w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-white dark:bg-gray-900">
+            <CardHeader className="sticky top-0 bg-white dark:bg-gray-900 z-10 border-b border-gray-200 dark:border-gray-700">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2 text-gray-900 dark:text-gray-100">
+                    <ShoppingCart className="h-5 w-5 text-blue-600" />
+                    Detalhes do Pedido
+                  </CardTitle>
+                  <CardDescription className="text-gray-600 dark:text-gray-400">
+                    {selectedOrder.ifood_order_id}
+                  </CardDescription>
+                </div>
+                <Button 
+                  variant="ghost" 
+                  size="icon"
+                  onClick={() => {
+                    setShowOrderDetails(false);
+                    setSelectedOrder(null);
+                  }}
+                >
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
+            </CardHeader>
+            
+            <CardContent className="p-6 space-y-6 bg-white dark:bg-gray-900">
+              {/* Loading state */}
+              {loadingOrderDetails && (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin mr-2 text-blue-600" />
+                  <span className="text-gray-700 dark:text-gray-300">Buscando detalhes completos do pedido...</span>
+                </div>
+              )}
+              
+              {/* Customer Info */}
+              <div className="space-y-2">
+                <h3 className="font-semibold text-lg text-gray-900 dark:text-gray-100">Informações do Cliente</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">Nome</p>
+                    <p className="font-medium text-gray-900 dark:text-gray-100">{selectedOrder.customer_name || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">Telefone</p>
+                    <p className="font-medium text-gray-900 dark:text-gray-100">{selectedOrder.customer_phone || 'N/A'}</p>
+                  </div>
+                </div>
+                {selectedOrder.customer_address && (
+                  <div>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-1">
+                      <MapPin className="h-3 w-3 text-red-500" />
+                      Endereço
+                    </p>
+                    <p className="font-medium text-gray-900 dark:text-gray-100">{selectedOrder.customer_address}</p>
+                  </div>
+                )}
+              </div>
+              
+              {/* Order Items */}
+              <div className="space-y-2">
+                <h3 className="font-semibold text-lg flex items-center gap-2 text-gray-900 dark:text-gray-100">
+                  <ShoppingCart className="h-5 w-5 text-blue-600" />
+                  Itens do Pedido
+                </h3>
+                {selectedOrder.order_data?.items && selectedOrder.order_data.items.length > 0 ? (
+                  <div className="border rounded-lg">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Quantidade</TableHead>
+                          <TableHead>Item</TableHead>
+                          <TableHead>Observações</TableHead>
+                          <TableHead className="text-right">Preço Unit.</TableHead>
+                          <TableHead className="text-right">Total</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {selectedOrder.order_data.items.map((item: any, index: number) => (
+                          <TableRow key={index}>
+                            <TableCell className="font-medium">{item.quantity || 1}x</TableCell>
+                            <TableCell>
+                              <div>
+                                <p className="font-medium">{item.name || item.productName || 'Item'}</p>
+                                {item.externalCode && (
+                                  <p className="text-xs text-muted-foreground">Código: {item.externalCode}</p>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <p className="text-sm">{item.observations || item.notes || '-'}</p>
+                              {item.options && item.options.length > 0 && (
+                                <div className="mt-1">
+                                  <p className="text-xs text-gray-600 dark:text-gray-400">Complementos:</p>
+                                  {item.options.map((option: any, idx: number) => (
+                                    <p key={idx} className="text-xs text-gray-700 dark:text-gray-300">
+                                      • {option.name} {option.quantity > 1 && `(${option.quantity}x)`} - R$ {(option.price || 0).toFixed(2)}
+                                    </p>
+                                  ))}
+                                </div>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              R$ {(item.unitPrice || item.price || 0).toFixed(2)}
+                            </TableCell>
+                            <TableCell className="text-right font-medium">
+                              R$ {(item.totalPrice || (item.price * (item.quantity || 1)) || 0).toFixed(2)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : (
+                  <div className="border rounded-lg p-8 text-center">
+                    <ShoppingCart className="h-12 w-12 mx-auto mb-3 text-gray-400" />
+                    <p className="text-muted-foreground">
+                      {loadingOrderDetails ? 'Carregando itens...' : 'Nenhum item encontrado'}
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Os detalhes dos itens serão exibidos quando disponíveis
+                    </p>
+                  </div>
+                )}
+              </div>
+              
+              {/* Financial Info */}
+              <div className="space-y-2">
+                <h3 className="font-semibold text-lg flex items-center gap-2 text-gray-900 dark:text-gray-100">
+                  <DollarSign className="h-5 w-5 text-green-600" />
+                  Informações Financeiras
+                </h3>
+                <div className="border border-gray-300 dark:border-gray-700 rounded-lg p-4 space-y-2 bg-gray-50 dark:bg-gray-800">
+                  {selectedOrder.order_data?.total?.subTotal !== undefined && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Subtotal</span>
+                      <span>R$ {(selectedOrder.order_data.total.subTotal).toFixed(2)}</span>
+                    </div>
+                  )}
+                  {(selectedOrder.order_data?.total?.deliveryFee !== undefined || selectedOrder.delivery_fee !== undefined) && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Taxa de Entrega</span>
+                      <span>R$ {(selectedOrder.order_data?.total?.deliveryFee || selectedOrder.delivery_fee || 0).toFixed(2)}</span>
+                    </div>
+                  )}
+                  {selectedOrder.order_data?.total?.benefits > 0 && (
+                    <div className="flex justify-between text-green-600">
+                      <span>Desconto</span>
+                      <span>- R$ {(selectedOrder.order_data.total.benefits).toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div className="border-t border-gray-300 dark:border-gray-600 pt-2 flex justify-between font-semibold text-lg text-gray-900 dark:text-gray-100">
+                    <span>Total</span>
+                    <span>R$ {(selectedOrder.order_data?.total?.orderAmount || selectedOrder.total_amount || 0).toFixed(2)}</span>
+                  </div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400 pt-2">
+                    Método de Pagamento: {selectedOrder.payment_method || 'N/A'}
+                  </div>
+                </div>
+              </div>
+              
+              {/* Order Status */}
+              <div className="space-y-2">
+                <h3 className="font-semibold text-lg text-gray-900 dark:text-gray-100">Status do Pedido</h3>
+                <div className="flex items-center gap-2">
+                  <Badge className={getStatusColor(selectedOrder.status)}>
+                    {selectedOrder.status}
+                  </Badge>
+                  <span className="text-sm text-gray-600 dark:text-gray-400">
+                    Criado em: {new Date(selectedOrder.created_at).toLocaleString('pt-BR')}
+                  </span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
     </div>
   );

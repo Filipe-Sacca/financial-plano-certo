@@ -491,7 +491,56 @@ export class IFoodPollingService {
                 const orderId = event.orderId;
                 console.log(`📦 [SIMULTANEOUS] Creating order: ${orderId}`);
                 
-                // Insert order directly to ifood_orders table
+                // FETCH COMPLETE ORDER DETAILS FROM IFOOD API
+                console.log(`📥 [SIMULTANEOUS] Fetching complete details for order: ${orderId}`);
+                
+                const tokenData = await this.getTokenForUser(userId);
+                if (!tokenData?.access_token) {
+                  throw new Error('No token available for fetching order details');
+                }
+                
+                // Call iFood API to get complete order details
+                const orderDetailsResponse = await axios.get(
+                  `https://merchant-api.ifood.com.br/order/v1.0/orders/${orderId}`,
+                  {
+                    headers: {
+                      'Authorization': `Bearer ${tokenData.access_token}`,
+                      'Accept': 'application/json'
+                    }
+                  }
+                );
+                
+                const fullOrderData = orderDetailsResponse.data;
+                console.log(`✅ [SIMULTANEOUS] Fetched complete order details for: ${orderId}`);
+                
+                // Extract customer information
+                const customerName = fullOrderData.customer?.name || 
+                                   fullOrderData.customer?.displayName || 
+                                   'Cliente iFood';
+                
+                // Extract items with proper pricing (values already in reais)
+                const items = fullOrderData.items?.map((item: any) => ({
+                  id: item.id,
+                  name: item.name,
+                  quantity: item.quantity,
+                  unitPrice: item.unitPrice || item.price || 0,
+                  totalPrice: item.totalPrice || (item.quantity * (item.unitPrice || item.price || 0)),
+                  notes: item.notes,
+                  options: item.options
+                })) || [];
+                
+                // Extract financial values (already in reais, not centavos)
+                const totalAmount = fullOrderData.total?.orderAmount || 
+                                  fullOrderData.totalPrice || 
+                                  fullOrderData.orderAmount || 0;
+                
+                const deliveryFee = fullOrderData.total?.deliveryFee || 
+                                   fullOrderData.deliveryFee || 0;
+                
+                // Extract payment method
+                const paymentMethod = fullOrderData.payments?.[0]?.prepaid ? 'ONLINE' : 'CASH';
+                
+                // Insert order with complete details to ifood_orders table
                 const { data: orderData, error: orderError } = await this.supabase
                   .from('ifood_orders')
                   .insert({
@@ -499,21 +548,12 @@ export class IFoodPollingService {
                     merchant_id: event.merchantId,
                     user_id: userId,
                     status: 'PENDING',
-                    order_data: {
-                      id: orderId,
-                      merchant: { id: event.merchantId },
-                      customer: { name: 'Cliente via Polling Automático' },
-                      items: [],
-                      total: 0,
-                      status: 'PLACED',
-                      createdAt: event.createdAt,
-                      eventId: event.id,
-                      salesChannel: event.salesChannel || 'IFOOD'
-                    },
-                    customer_name: 'Cliente via Polling Automático',
-                    total_amount: 0,
-                    delivery_fee: 0,
-                    payment_method: 'ONLINE'
+                    order_data: fullOrderData, // Store complete order data
+                    customer_name: customerName,
+                    total_amount: totalAmount,
+                    delivery_fee: deliveryFee,
+                    payment_method: paymentMethod,
+                    items: items // Store items separately for easy access
                   })
                   .select('id');
                   
@@ -575,7 +615,16 @@ export class IFoodPollingService {
           }
         }
 
-        // STEP 5: Acknowledge after simultaneous processing
+        // STEP 5: Process order events to get complete details
+        try {
+          console.log(`📦 [SIMULTANEOUS] Processing order events to get complete details...`);
+          await this.processOrderEvents(events, userId);
+          console.log(`✅ [SIMULTANEOUS] Order events processed successfully`);
+        } catch (error: any) {
+          console.error(`❌ [SIMULTANEOUS] Order processing failed:`, error);
+        }
+        
+        // STEP 6: Acknowledge after simultaneous processing
         try {
           console.log(`✅ [SIMULTANEOUS] Acknowledging ${eventIds.length} events after simultaneous processing...`);
           await this.acknowledgeStoredEvents(eventIds, userId, pollingId);
@@ -667,10 +716,11 @@ export class IFoodPollingService {
    * Save order from PLACED event directly to ifood_orders table
    */
   private async saveOrderFromPlacedEvent(event: any, accessToken: string, userId: string): Promise<void> {
+    // Extract orderId from event_data structure (like our debug endpoint)
+    const orderId = event.event_data?.orderId || event.orderId || `event-order-${event.event_id?.slice(0, 8)}`;
+    const eventCode = event.event_data?.code || event.code || event.event_type;
+    
     try {
-      // Extract orderId from event_data structure (like our debug endpoint)
-      const orderId = event.event_data?.orderId || event.orderId || `event-order-${event.event_id?.slice(0, 8)}`;
-      const eventCode = event.event_data?.code || event.code || event.event_type;
       
       console.log(`📦 [ORDER-SAVE] Processing PLACED order: ${orderId} (${eventCode})`);
 
@@ -712,13 +762,14 @@ export class IFoodPollingService {
         return;
       }
 
-      // Get complete order data from virtual bag API
+      // Get complete order data from standard order API
+      // NOTE: For groceries category, use virtual-bag endpoint: /orders/${orderId}/virtual-bag
       let orderData = null;
       
       try {
-        console.log(`🔍 [ORDER-SAVE] Fetching order data via virtual bag: ${orderId}`);
-        const virtualBagResponse = await this.optimizedAxios.get(
-          `https://merchant-api.ifood.com.br/order/v1.0/orders/${orderId}/virtual-bag`,
+        console.log(`🔍 [ORDER-SAVE] Fetching order data via standard API: ${orderId}`);
+        const orderResponse = await this.optimizedAxios.get(
+          `https://merchant-api.ifood.com.br/order/v1.0/orders/${orderId}`,
           {
             headers: {
               'Accept': 'application/json',
@@ -728,48 +779,27 @@ export class IFoodPollingService {
           }
         );
 
-        if (virtualBagResponse.status === 200) {
-          orderData = virtualBagResponse.data;
-          console.log(`✅ [ORDER-SAVE] Virtual bag data retrieved for order: ${event.orderId}`);
+        if (orderResponse.status === 200) {
+          orderData = orderResponse.data;
+          console.log(`✅ [ORDER-SAVE] Order data retrieved for order: ${orderId}`);
         }
-      } catch (virtualBagError: any) {
-        console.log(`🔄 [ORDER-SAVE] Virtual bag failed, trying standard order endpoint for ${event.orderId}`);
+      } catch (orderError: any) {
+        console.error(`❌ [ORDER-SAVE] Failed to get order data for ${orderId}:`, orderError.message);
         
-        // Fallback to standard order endpoint
-        try {
-          const orderResponse = await this.optimizedAxios.get(
-            `https://merchant-api.ifood.com.br/order/v1.0/orders/${event.orderId}`,
-            {
-              headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${accessToken}`
-              }
-            }
-          );
-
-          if (orderResponse.status === 200) {
-            orderData = orderResponse.data;
-            console.log(`✅ [ORDER-SAVE] Standard order data retrieved for order: ${event.orderId}`);
-          }
-        } catch (orderError: any) {
-          console.error(`❌ [ORDER-SAVE] Failed to get order data for ${event.orderId}:`, orderError.message);
-          
-          // Save minimal order with event data only
-          orderData = {
-            id: event.orderId,
-            createdAt: event.createdAt,
-            salesChannel: event.salesChannel,
-            merchant: { id: event.merchantId }
-          };
-          console.log(`📝 [ORDER-SAVE] Using minimal event data for order: ${event.orderId}`);
-        }
+        // Save minimal order with event data only
+        orderData = {
+          id: orderId,
+          createdAt: event.createdAt,
+          salesChannel: event.salesChannel,
+          merchant: { id: event.merchantId }
+        };
+        console.log(`📝 [ORDER-SAVE] Using minimal event data for order: ${orderId}`);
       }
 
       // Create order entity for ifood_orders table
       const orderEntity = {
-        ifood_order_id: event.orderId,
-        merchant_id: event.merchantId,
+        ifood_order_id: orderId,
+        merchant_id: event.merchant_id || event.merchantId,
         user_id: userId,
         status: 'PENDING', // All PLACED orders start as PENDING
         order_data: orderData,
@@ -807,15 +837,15 @@ export class IFoodPollingService {
         .select('id');
 
       if (error) {
-        console.error(`❌ [ORDER-SAVE] Error saving order ${event.orderId} to ifood_orders:`, error);
+        console.error(`❌ [ORDER-SAVE] Error saving order ${orderId} to ifood_orders:`, error);
         throw error;
       } else {
         const savedOrderId = data?.[0]?.id;
-        console.log(`✅ [ORDER-SAVE] Order ${event.orderId} saved to ifood_orders table with ID: ${savedOrderId}`);
+        console.log(`✅ [ORDER-SAVE] Order ${orderId} saved to ifood_orders table with ID: ${savedOrderId}`);
       }
 
     } catch (error: any) {
-      console.error(`❌ [ORDER-SAVE] Error processing PLACED event ${event.orderId}:`, error.message);
+      console.error(`❌ [ORDER-SAVE] Error processing PLACED event ${orderId}:`, error.message);
       throw error; // Re-throw for Promise.allSettled tracking
     }
   }
