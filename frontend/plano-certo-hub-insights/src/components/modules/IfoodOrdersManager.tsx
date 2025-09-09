@@ -33,6 +33,16 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Label } from '@/components/ui/label';
 
 interface PollingStatus {
   isRunning: boolean;
@@ -84,8 +94,29 @@ const IfoodOrdersManager: React.FC = () => {
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [showOrderDetails, setShowOrderDetails] = useState(false);
   const [loadingOrderDetails, setLoadingOrderDetails] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [orderToCancel, setOrderToCancel] = useState<string | null>(null);
+  const [cancelReason, setCancelReason] = useState<string>('');
+  const [cancelLoading, setCancelLoading] = useState(false);
   const userId = 'c1488646-aca8-4220-aacc-00e7ae3d6490'; // Real user ID from database
   const { toast } = useToast();
+
+  // iFood cancellation reasons
+  const cancellationReasons = [
+    { value: 'SYSTEM_ISSUE', label: 'Problemas de sistema na loja' },
+    { value: 'DUPLICATE_ORDER', label: 'O pedido está duplicado' },
+    { value: 'ITEM_UNAVAILABLE', label: 'Item indisponível' },
+    { value: 'NO_DELIVERY_STAFF', label: 'A loja está sem entregadores disponíveis' },
+    { value: 'MENU_OUTDATED', label: 'O cardápio está desatualizado' },
+    { value: 'OUT_OF_DELIVERY_AREA', label: 'O pedido está fora da área de entrega' },
+    { value: 'FRAUD_SUSPICION', label: 'Suspeita de golpe ou trote' },
+    { value: 'OUT_OF_BUSINESS_HOURS', label: 'O pedido foi feito fora do horário de funcionamento da loja' },
+    { value: 'INTERNAL_DIFFICULTIES', label: 'A loja está passando por dificuldades internas' },
+    { value: 'RISKY_AREA', label: 'A entrega é em uma área de risco' },
+    { value: 'LATE_OPENING', label: 'A loja só abrirá mais tarde' },
+    { value: 'ADDRESS_ISSUE', label: 'O endereço está incompleto e o cliente não atende' },
+    { value: 'PAYMENT_ISSUE', label: 'Problema com pagamento do cliente' },
+  ];
 
   const API_BASE = 'http://localhost:8085';
 
@@ -103,25 +134,96 @@ const IfoodOrdersManager: React.FC = () => {
     }
   };
 
-  // Fetch orders
-  const fetchOrders = async () => {
+  // Track order changes for notifications
+  const [orderNotifications, setOrderNotifications] = useState<Array<{type: 'new' | 'update', orderId: string, status?: string}>>([]);
+
+  // Fetch orders with smooth update
+  const fetchOrders = async (isInitialLoad = false) => {
     try {
-      setLoading(true);
+      // Only show loading on initial load
+      if (isInitialLoad) {
+        setLoading(true);
+      }
+      
       const response = await fetch(`${API_BASE}/orders/${selectedMerchant}?userId=${userId}`);
       const data = await response.json();
       
       if (data.success) {
-        setOrders(data.data?.orders || []);
-        console.log('📦 Orders fetched:', data.data?.orders?.length || 0);
+        const newOrders = data.data?.orders || [];
+        const notifications: Array<{type: 'new' | 'update', orderId: string, status?: string}> = [];
+        
+        // Smart update: only update if there are changes
+        setOrders(prevOrders => {
+          // If it's the initial load or completely different, replace all
+          if (isInitialLoad || prevOrders.length === 0) {
+            return newOrders;
+          }
+          
+          // Create a map of existing orders for quick lookup
+          const existingOrdersMap = new Map(prevOrders.map(order => [order.id, order]));
+          
+          // Update or add new orders
+          const updatedOrders = newOrders.map(newOrder => {
+            const existingOrder = existingOrdersMap.get(newOrder.id);
+            
+            // If order exists and status/data changed, update it
+            if (existingOrder && 
+                (existingOrder.status !== newOrder.status || 
+                 JSON.stringify(existingOrder.order_data) !== JSON.stringify(newOrder.order_data))) {
+              // Queue notification for status changes
+              if (existingOrder.status !== newOrder.status) {
+                notifications.push({
+                  type: 'update',
+                  orderId: newOrder.id,
+                  status: newOrder.status
+                });
+              }
+              return newOrder;
+            }
+            
+            // If it's a completely new order
+            if (!existingOrder) {
+              notifications.push({
+                type: 'new',
+                orderId: newOrder.id
+              });
+              return newOrder;
+            }
+            
+            // No changes, keep existing
+            return existingOrder;
+          });
+          
+          // Remove orders that no longer exist
+          const newOrderIds = new Set(newOrders.map(o => o.id));
+          const filteredOrders = updatedOrders.filter(order => newOrderIds.has(order.id));
+          
+          // Only update if there are actual changes
+          const hasChanges = JSON.stringify(filteredOrders) !== JSON.stringify(prevOrders);
+          return hasChanges ? filteredOrders : prevOrders;
+        });
+        
+        // Set notifications to be processed by useEffect
+        if (notifications.length > 0 && !isInitialLoad) {
+          setOrderNotifications(notifications);
+        }
+        
+        console.log('📦 Orders synced:', newOrders.length);
       } else {
         console.error('❌ Error fetching orders:', data.error);
-        setOrders([]);
+        if (isInitialLoad) {
+          setOrders([]);
+        }
       }
     } catch (error) {
       console.error('❌ Network error fetching orders:', error);
-      setOrders([]);
+      if (isInitialLoad) {
+        setOrders([]);
+      }
     } finally {
-      setLoading(false);
+      if (isInitialLoad) {
+        setLoading(false);
+      }
     }
   };
 
@@ -208,25 +310,139 @@ const IfoodOrdersManager: React.FC = () => {
     }
   };
 
-  // Auto-refresh every 10 seconds
+  // Smart auto-refresh with smooth updates
   useEffect(() => {
-    const interval = setInterval(() => {
+    let isActive = true;
+    
+    const smartRefresh = async () => {
+      if (!isActive) return;
+      
+      // Fetch polling status silently
       fetchPollingStatus();
-      if (selectedMerchant) {
-        fetchOrders();
-        fetchCompletedOrders();
+      
+      // Only refresh orders if merchant is selected and polling is active
+      if (selectedMerchant && pollingStatus?.isRunning) {
+        // Use non-blocking updates
+        await Promise.all([
+          fetchOrders(false), // false = not initial load
+          fetchCompletedOrders()
+        ]);
       }
-    }, 10000);
-
+    };
+    
+    // Start with longer interval and adjust based on activity
+    const interval = setInterval(smartRefresh, 15000); // 15 seconds (less aggressive)
+    
     // Initial fetch
     fetchPollingStatus();
     if (selectedMerchant) {
-      fetchOrders();
+      fetchOrders(true); // true = initial load
       fetchCompletedOrders();
     }
+    
+    return () => {
+      isActive = false;
+      clearInterval(interval);
+    };
+  }, [selectedMerchant, pollingStatus?.isRunning]);
 
-    return () => clearInterval(interval);
-  }, [selectedMerchant]);
+  // Handle order notifications in useEffect to avoid render-time state updates
+  useEffect(() => {
+    if (orderNotifications.length > 0) {
+      orderNotifications.forEach(notification => {
+        if (notification.type === 'new') {
+          toast({
+            title: "🆕 Novo Pedido!",
+            description: `Pedido ${notification.orderId.substring(0, 8)}... recebido`,
+            duration: 4000
+          });
+        } else if (notification.type === 'update' && notification.status) {
+          toast({
+            title: "🔄 Pedido Atualizado",
+            description: `Pedido ${notification.orderId.substring(0, 8)}... mudou para ${notification.status}`,
+            duration: 3000
+          });
+        }
+      });
+      // Clear notifications after processing
+      setOrderNotifications([]);
+    }
+  }, [orderNotifications, toast]);
+
+  // Helper to extract customer data from order
+  const getCustomerInfo = (order: Order) => {
+    let name = 'Cliente não informado';
+    let phone = '';
+    
+    // Extract name
+    if (typeof order.customer_name === 'string' && order.customer_name) {
+      name = order.customer_name;
+    } else if (typeof order.customer_name === 'object' && order.customer_name !== null) {
+      const customerObj = order.customer_name as any;
+      
+      // For iFood test orders with number field
+      if (customerObj.number) {
+        name = `Teste iFood: ${customerObj.number}`;
+      } else if (customerObj.name) {
+        name = customerObj.name;
+      } else {
+        // Try to get the first string value
+        const firstValue = Object.values(customerObj)[0];
+        if (typeof firstValue === 'string') {
+          name = firstValue;
+        }
+      }
+    }
+    
+    // Extract phone - handle both string and object formats
+    if (typeof order.customer_phone === 'string' && order.customer_phone) {
+      phone = order.customer_phone;
+    } else if (typeof order.customer_phone === 'object' && order.customer_phone !== null) {
+      const phoneObj = order.customer_phone as any;
+      
+      // For iFood test orders with number field in phone
+      if (phoneObj.number) {
+        phone = phoneObj.number;
+      } else if (phoneObj.phone) {
+        phone = phoneObj.phone;
+      } else {
+        // Try to get the first string value that looks like a phone
+        const values = Object.values(phoneObj);
+        for (const value of values) {
+          if (typeof value === 'string' && value.match(/[0-9]/)) {
+            phone = value;
+            break;
+          }
+        }
+      }
+    }
+    
+    // Check order_data as fallback
+    if (!name || name === 'Cliente não informado') {
+      if (order.order_data) {
+        const orderData = order.order_data;
+        
+        // Standard iFood order structure
+        if (orderData.customer) {
+          name = orderData.customer.name || orderData.customer.firstName || name;
+          phone = phone || orderData.customer.phone || orderData.customer.phoneNumber || '';
+        }
+        
+        // Alternative structure
+        if (orderData.customerName) {
+          name = orderData.customerName;
+          phone = phone || orderData.customerPhone || '';
+        }
+        
+        // For test orders
+        if (orderData.displayId && orderData.displayId.includes('TEST')) {
+          name = 'Pedido de Teste iFood';
+        }
+      }
+    }
+    
+    return { name, phone };
+  };
 
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
@@ -276,7 +492,7 @@ const IfoodOrdersManager: React.FC = () => {
         });
         
         // Refresh orders list
-        await fetchOrders();
+        await fetchOrders(false); // Smooth update
       } else {
         throw new Error(result.error || 'Erro ao confirmar pedido');
       }
@@ -292,19 +508,37 @@ const IfoodOrdersManager: React.FC = () => {
     }
   };
 
-  const handleCancelOrder = async (orderId: string) => {
+  // Open cancel modal
+  const openCancelModal = (orderId: string) => {
+    setOrderToCancel(orderId);
+    setCancelReason('');
+    setShowCancelModal(true);
+  };
+
+  // Handle order cancellation with reason
+  const handleCancelOrder = async () => {
+    if (!orderToCancel || !cancelReason) {
+      toast({
+        title: "⚠️ Atenção",
+        description: "Selecione um motivo para o cancelamento",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setCancelLoading(true);
     try {
-      console.log('🚫 Cancelando pedido:', orderId);
-      setLoadingActions(prev => ({ ...prev, [orderId]: 'cancelling' }));
+      console.log('🚫 Cancelando pedido:', orderToCancel, 'Motivo:', cancelReason);
+      setLoadingActions(prev => ({ ...prev, [orderToCancel]: 'cancelling' }));
       
-      const response = await fetch(`${API_BASE}/orders/${orderId}/cancel`, {
+      const response = await fetch(`${API_BASE}/orders/${orderToCancel}/cancel`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ 
           userId,
-          reason: 'Cancelado pelo merchant via dashboard'
+          reason: cancelReason
         }),
       });
       
@@ -314,11 +548,15 @@ const IfoodOrdersManager: React.FC = () => {
       if (result.success) {
         toast({
           title: "🚫 Pedido Cancelado",
-          description: `Pedido ${orderId.substring(0, 8)}... cancelado com sucesso!`
+          description: `Pedido ${orderToCancel.substring(0, 8)}... cancelado com sucesso!`
         });
         
+        setShowCancelModal(false);
+        setOrderToCancel(null);
+        setCancelReason('');
+        
         // Refresh orders list (cancelled order will be filtered out)
-        await fetchOrders();
+        await fetchOrders(false); // Smooth update
       } else {
         throw new Error(result.error || 'Erro ao cancelar pedido');
       }
@@ -330,7 +568,10 @@ const IfoodOrdersManager: React.FC = () => {
         variant: "destructive"
       });
     } finally {
-      setLoadingActions(prev => ({ ...prev, [orderId]: null }));
+      setCancelLoading(false);
+      if (orderToCancel) {
+        setLoadingActions(prev => ({ ...prev, [orderToCancel]: null }));
+      }
     }
   };
 
@@ -397,7 +638,7 @@ const IfoodOrdersManager: React.FC = () => {
           title: "👨‍🍳 Preparo Iniciado",
           description: `Pedido ${orderId.substring(0, 8)}... está sendo preparado!`
         });
-        await fetchOrders();
+        await fetchOrders(false); // Smooth update
       } else {
         throw new Error(result.error || 'Erro ao iniciar preparo');
       }
@@ -437,7 +678,7 @@ const IfoodOrdersManager: React.FC = () => {
           title: "📦 Pronto para Retirada",
           description: `Pedido ${orderId.substring(0, 8)}... está pronto para ser retirado!`
         });
-        await fetchOrders();
+        await fetchOrders(false); // Smooth update
       } else {
         throw new Error(result.error || 'Erro ao marcar como pronto');
       }
@@ -477,7 +718,7 @@ const IfoodOrdersManager: React.FC = () => {
           title: "🚚 Pedido Despachado",
           description: `Pedido ${orderId.substring(0, 8)}... foi enviado para entrega!`
         });
-        await fetchOrders();
+        await fetchOrders(false); // Smooth update
       } else {
         throw new Error(result.error || 'Erro ao despachar pedido');
       }
@@ -521,7 +762,7 @@ const IfoodOrdersManager: React.FC = () => {
           });
           
           // Refresh orders list to get updated data
-          await fetchOrders();
+          await fetchOrders(false); // Smooth update
         }
       }
     } catch (error: any) {
@@ -695,7 +936,7 @@ const IfoodOrdersManager: React.FC = () => {
               <p className="text-sm">Aguardando pedidos do sistema de polling...</p>
             </div>
           ) : (
-            <Table>
+            <Table className="transition-all duration-300">
               <TableHeader>
                 <TableRow>
                   <TableHead>Order ID</TableHead>
@@ -713,9 +954,8 @@ const IfoodOrdersManager: React.FC = () => {
                       {order.ifood_order_id.substring(0, 8)}...
                     </TableCell>
                     <TableCell>
-                      <div>
-                        <div className="font-medium">{order.customer_name || 'N/A'}</div>
-                        <div className="text-sm text-muted-foreground">{order.customer_phone || 'N/A'}</div>
+                      <div className="font-medium">
+                        {getCustomerInfo(order).name}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -731,10 +971,11 @@ const IfoodOrdersManager: React.FC = () => {
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-2 justify-center">
+                        {/* DEBUG: Status do pedido = {order.status} */}
                         {/* FLUXO: PENDING → Confirmar (auto-preparo) → PREPARING → Pronto → DISPATCHED → Concluir */}
                         
-                        {/* Etapa 1: Ações para pedidos PENDING */}
-                        {order.status === 'PENDING' && (
+                        {/* Etapa 1: Ações para pedidos PENDING ou CONFIRMED */}
+                        {(order.status === 'PENDING' || order.status === 'CONFIRMED') && (
                           <>
                             <Button 
                               size="sm" 
@@ -759,7 +1000,7 @@ const IfoodOrdersManager: React.FC = () => {
                               className="cursor-pointer"
                               onClick={() => {
                                 console.log('🎯 Botão Cancelar clicado para pedido:', order.ifood_order_id);
-                                handleCancelOrder(order.ifood_order_id);
+                                openCancelModal(order.ifood_order_id);
                               }}
                               disabled={!!loadingActions[order.ifood_order_id]}
                             >
@@ -773,8 +1014,8 @@ const IfoodOrdersManager: React.FC = () => {
                           </>
                         )}
                         
-                        {/* Etapa 2: Finalizar Preparo (PREPARING) */}
-                        {order.status === 'PREPARING' && (
+                        {/* Etapa 2: Finalizar Preparo (PREPARING ou PREPARATION_STARTED) */}
+                        {(order.status === 'PREPARING' || order.status === 'PREPARATION_STARTED') && (
                           <>
                             <Button 
                               size="sm" 
@@ -796,7 +1037,7 @@ const IfoodOrdersManager: React.FC = () => {
                               className="cursor-pointer"
                               onClick={() => {
                                 console.log('🎯 Botão Cancelar clicado para pedido:', order.ifood_order_id);
-                                handleCancelOrder(order.ifood_order_id);
+                                openCancelModal(order.ifood_order_id);
                               }}
                               disabled={!!loadingActions[order.ifood_order_id]}
                             >
@@ -810,8 +1051,8 @@ const IfoodOrdersManager: React.FC = () => {
                           </>
                         )}
                         
-                        {/* Etapa 3: Pedido Pronto para Retirada (READY_FOR_PICKUP) */}
-                        {order.status === 'READY_FOR_PICKUP' && (
+                        {/* Etapa 3: Pedido Pronto para Retirada (READY_FOR_PICKUP ou READY) */}
+                        {(order.status === 'READY_FOR_PICKUP' || order.status === 'READY') && (
                           <>
                             <Button 
                               size="sm" 
@@ -831,7 +1072,7 @@ const IfoodOrdersManager: React.FC = () => {
                               size="sm" 
                               variant="destructive"
                               className="cursor-pointer"
-                              onClick={() => handleCancelOrder(order.ifood_order_id)}
+                              onClick={() => openCancelModal(order.ifood_order_id)}
                               disabled={!!loadingActions[order.ifood_order_id]}
                             >
                               {loadingActions[order.ifood_order_id] === 'cancelling' ? (
@@ -862,6 +1103,18 @@ const IfoodOrdersManager: React.FC = () => {
                               Confirmar Entrega
                             </Button>
                           </>
+                        )}
+                        
+                        {/* Status não reconhecido - mostrar botão Ver para debug */}
+                        {order.status !== 'PENDING' && 
+                         order.status !== 'PREPARING' && 
+                         order.status !== 'READY_FOR_PICKUP' && 
+                         order.status !== 'DISPATCHED' && 
+                         order.status !== 'DELIVERED' && 
+                         order.status !== 'CANCELLED' && (
+                          <div className="text-xs text-gray-500">
+                            Status: {order.status}
+                          </div>
                         )}
                         
                         {/* Botão para Ver no módulo de Entregas quando estiver DISPATCHED ou READY_FOR_PICKUP */}
@@ -923,7 +1176,7 @@ const IfoodOrdersManager: React.FC = () => {
               <p className="text-sm">Pedidos finalizados aparecerão aqui</p>
             </div>
           ) : (
-            <Table>
+            <Table className="transition-all duration-300">
               <TableHeader>
                 <TableRow>
                   <TableHead>Pedido</TableHead>
@@ -950,7 +1203,7 @@ const IfoodOrdersManager: React.FC = () => {
                     <TableCell>
                       <div className="space-y-1">
                         <div className="font-medium text-sm">
-                          {order.customer_name || 'Cliente não informado'}
+                          {getCustomerInfo(order).name}
                         </div>
                       </div>
                     </TableCell>
@@ -1115,11 +1368,11 @@ const IfoodOrdersManager: React.FC = () => {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-sm text-gray-600 dark:text-gray-400">Nome</p>
-                    <p className="font-medium text-gray-900 dark:text-gray-100">{selectedOrder.customer_name || 'N/A'}</p>
+                    <p className="font-medium text-gray-900 dark:text-gray-100">{getCustomerInfo(selectedOrder).name}</p>
                   </div>
                   <div>
                     <p className="text-sm text-gray-600 dark:text-gray-400">Telefone</p>
-                    <p className="font-medium text-gray-900 dark:text-gray-100">{selectedOrder.customer_phone || 'N/A'}</p>
+                    <p className="font-medium text-gray-900 dark:text-gray-100">{getCustomerInfo(selectedOrder).phone || 'Não informado'}</p>
                   </div>
                 </div>
                 {selectedOrder.customer_address && (
@@ -1141,7 +1394,7 @@ const IfoodOrdersManager: React.FC = () => {
                 </h3>
                 {selectedOrder.order_data?.items && selectedOrder.order_data.items.length > 0 ? (
                   <div className="border rounded-lg">
-                    <Table>
+                    <Table className="transition-all duration-300">
                       <TableHeader>
                         <TableRow>
                           <TableHead>Quantidade</TableHead>
@@ -1252,6 +1505,71 @@ const IfoodOrdersManager: React.FC = () => {
         </div>
       )}
 
+      {/* Cancel Order Modal */}
+      <Dialog open={showCancelModal} onOpenChange={setShowCancelModal}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Cancelar pedido</DialogTitle>
+            <DialogDescription>
+              Cancelar muitos pedidos pode afetar o desempenho da sua loja no iFood. 
+              Assim que possível, ajuste sua operação para não cancelar novos pedidos pelo mesmo motivo.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-4">
+            <Alert className="mb-4 border-red-200 bg-red-50">
+              <AlertCircle className="h-4 w-4 text-red-600" />
+              <AlertDescription className="text-red-800">
+                <strong>Atenção:</strong> aguarde alguns minutos após a solicitação para receber a confirmação do cancelamento.
+              </AlertDescription>
+            </Alert>
+            
+            <div className="space-y-3">
+              <p className="text-sm font-medium mb-3">Selecione o motivo pelo qual você não pode aceitar este pedido:</p>
+              
+              <RadioGroup value={cancelReason} onValueChange={setCancelReason}>
+                <div className="grid grid-cols-2 gap-3">
+                  {cancellationReasons.map((reason) => (
+                    <div key={reason.value} className="flex items-start space-x-2">
+                      <RadioGroupItem value={reason.value} id={reason.value} />
+                      <Label 
+                        htmlFor={reason.value} 
+                        className="text-sm cursor-pointer leading-relaxed"
+                      >
+                        {reason.label}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+              </RadioGroup>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setShowCancelModal(false)}
+              disabled={cancelLoading}
+            >
+              Voltar
+            </Button>
+            <Button 
+              variant="destructive"
+              onClick={handleCancelOrder}
+              disabled={!cancelReason || cancelLoading}
+            >
+              {cancelLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Cancelando...
+                </>
+              ) : (
+                'Cancelar pedido'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

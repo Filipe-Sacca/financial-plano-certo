@@ -35,7 +35,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'x-requested-with'],
   optionsSuccessStatus: 200
 }));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' })); // Aumenta o limite para suportar imagens
 
 // Enhanced logging middleware
 app.use((req, res, next) => {
@@ -1900,6 +1900,90 @@ app.post('/merchants/:merchantId/image/upload', async (req, res) => {
   }
 });
 
+// Update Product (including image path)
+app.put('/merchants/:merchantId/products/:productId', async (req, res) => {
+  try {
+    const { merchantId, productId } = req.params;
+    const { user_id, imagePath, productName } = req.body;
+
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'user_id is required'
+      });
+    }
+
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      return res.status(500).json({
+        success: false,
+        error: 'Missing Supabase configuration'
+      });
+    }
+
+    console.log(`📸 [UPDATE PRODUCT] Updating product ${productId} with image`);
+
+    // Criar o serviço de produto
+    const productService = new IFoodProductService(supabaseUrl, supabaseKey);
+    
+    // Estrutura mínima para atualizar apenas a imagem do produto no iFood
+    const productUpdate = {
+      products: [
+        {
+          id: productId,
+          name: productName || "Produto", // Nome é obrigatório no iFood
+          imagePath: imagePath // URL da imagem ou base64
+        }
+      ]
+    };
+
+    // Enviar atualização para o iFood
+    const ifoodResult = await productService.updateProduct(user_id, merchantId, productId, productUpdate);
+    
+    if (!ifoodResult.success) {
+      console.error('❌ [UPDATE PRODUCT] iFood API error:', ifoodResult.error);
+      // Mesmo se falhar no iFood, vamos atualizar localmente
+    }
+
+    // Atualizar o produto no banco de dados local também
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    
+    const { data, error } = await supabase
+      .from('ifood_products')
+      .update({ 
+        image_path: imagePath,
+        updated_at: new Date().toISOString()
+      })
+      .eq('product_id', productId)
+      .eq('merchant_id', merchantId);
+
+    if (error) {
+      console.error('❌ [UPDATE PRODUCT] Database error:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to update product in database'
+      });
+    }
+
+    console.log(`✅ [UPDATE PRODUCT] Product ${productId} updated successfully`);
+    return res.json({
+      success: true,
+      message: 'Product updated successfully',
+      ifoodSync: ifoodResult.success
+    });
+
+  } catch (error: any) {
+    console.error('❌ [UPDATE PRODUCT] Error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error'
+    });
+  }
+});
+
 // Bulk Item Ingestion
 app.post('/item/ingestion/:merchantId', async (req, res) => {
   try {
@@ -2843,63 +2927,52 @@ app.post('/orders/:orderId/cancel', async (req, res) => {
       throw new Error('No valid token found for user');
     }
     
-    // 2. Skip iFood API call for now (API endpoint issues) - just update locally
-    let ifoodCancelSuccess = false;
-    const SKIP_IFOOD_CANCEL_API = true;
+    // 2. Map frontend reasons to iFood cancellation codes
+    const reasonMapping: Record<string, string> = {
+      'SYSTEM_ISSUE': '501',
+      'DUPLICATE_ORDER': '502', 
+      'ITEM_UNAVAILABLE': '503',
+      'NO_DELIVERY_STAFF': '504',
+      'MENU_OUTDATED': '505',
+      'OUT_OF_DELIVERY_AREA': '506',
+      'FRAUD_SUSPICION': '507',
+      'OUT_OF_BUSINESS_HOURS': '508',
+      'INTERNAL_DIFFICULTIES': '509',
+      'RISKY_AREA': '510',
+      'LATE_OPENING': '511',
+      'ADDRESS_ISSUE': '512',
+      'PAYMENT_ISSUE': '513'
+    };
     
-    if (!SKIP_IFOOD_CANCEL_API) {
-      try {
-        console.log(`📞 [IFOOD-API] Requesting cancellation for order ${orderId} via iFood API...`);
-      
-      const ifoodResponse = await fetch(`https://merchant-api.ifood.com.br/order/v1.0/orders/${orderId}/requestCancellation`, {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${tokenData.access_token}`
-        },
-        body: JSON.stringify({
-          reason: reason || 'Cancelled by merchant via dashboard'
-        })
-      });
-      
-      if (ifoodResponse.ok) {
-        console.log(`✅ [IFOOD-API] Order ${orderId} cancellation requested successfully on iFood`);
-        ifoodCancelSuccess = true;
-      } else {
-        const errorData = await ifoodResponse.json().catch(() => ({}));
-        console.warn(`⚠️ [IFOOD-API] iFood API returned error ${ifoodResponse.status}: ${(errorData as any).message || 'Unknown error'}`);
-        console.warn(`⚠️ [IFOOD-API] Proceeding with local cancellation only...`);
-      }
-      } catch (apiError: any) {
-        console.warn(`⚠️ [IFOOD-API] Error calling iFood API:`, apiError.message);
-        console.warn(`⚠️ [IFOOD-API] Proceeding with local cancellation only...`);
-      }
-    } else {
-      console.log(`⚠️ [IFOOD-API] Skipping iFood API call - updating locally only`);
-    }
+    const cancellationCode = reasonMapping[reason] || '503'; // Default to ITEM_UNAVAILABLE
     
-    // 3. Update local database status regardless of iFood API result
+    console.log(`🔍 [CANCEL] Mapped reason '${reason}' to cancellation code: ${cancellationCode}`);
+    
+    // 3. Update order status (this will also call iFood API with the cancellation code)
     const result = await orderService.updateOrderStatus(orderId, 'CANCELLED', userId, {
       cancelled_by: 'MERCHANT',
-      cancellation_reason: reason || 'Cancelled by merchant via dashboard'
+      cancellation_reason: reason || 'Cancelled by merchant via dashboard',
+      cancellationCode: cancellationCode // Pass the cancellation code to the service
     });
     
     if (!result.success) {
       throw new Error(result.error || 'Failed to update local database');
     }
     
-    console.log(`✅ [API] Order ${orderId} cancelled locally${ifoodCancelSuccess ? ' and notified to iFood' : ' (iFood notification failed)'}`);
+    // Check if iFood API was updated
+    const ifoodApiUpdated = result.data?.ifoodApiUpdated ?? false;
+    
+    console.log(`✅ [API] Order ${orderId} cancelled locally${ifoodApiUpdated ? ' and notified to iFood' : ' (iFood notification failed)'}`);
     
     res.json({
       success: true,
-      message: ifoodCancelSuccess ? 
+      message: ifoodApiUpdated ? 
         'Order cancelled successfully on iFood and locally' : 
         'Order cancelled locally (iFood API unavailable)',
       orderId,
       status: 'CANCELLED', 
       reason: reason || 'Cancelled by merchant',
-      ifoodApiNotified: ifoodCancelSuccess,
+      ifoodApiNotified: ifoodApiUpdated,
       timestamp: new Date().toISOString()
     });
   } catch (error: any) {

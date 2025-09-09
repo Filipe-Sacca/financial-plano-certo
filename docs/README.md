@@ -1,128 +1,353 @@
-# 🏢 Plano Certo Hub - Sistema Integrado iFood
+# 🍔 Plano Certo Hub - iFood Integration Platform
 
-## 📁 Estrutura Organizada do Projeto
+## 📋 Visão Geral
+
+**Plano Certo Hub** é uma plataforma completa de gerenciamento e integração com o iFood, oferecendo controle total sobre pedidos, entregas, avaliações e análise de dados em tempo real. O sistema utiliza arquitetura moderna com React, TypeScript, Node.js e Supabase.
+
+### ✨ Principais Funcionalidades
+
+- **📦 Gestão Completa de Pedidos** - Ciclo completo desde recebimento até entrega
+- **🚚 Rastreamento de Entregas** - Monitoramento em tempo real com mapas interativos
+- **⭐ Gerenciamento de Avaliações** - Sistema de respostas e análise de sentimento
+- **📊 Analytics Avançado** - Heatmaps de vendas e análise geográfica
+- **🔄 Sincronização Automática** - Polling de alta precisão (30s) com o iFood
+- **🔐 Autenticação Segura** - Sistema completo com Supabase Auth
+
+## 🏗️ Arquitetura do Sistema
 
 ```
-📂 Plano Certo Hub/
-│
-├── 📂 frontend/                     # 🎨 Aplicações Frontend
-│   ├── plano-certo-hub-insights/   # Dashboard principal React/TypeScript
-│   └── ccflare/                     # Aplicação secundária
-│
-├── 📂 backend/                      # 🖥️ Servidor Backend Node.js
-│   ├── server.js                    # Servidor Express principal
-│   ├── test-server.js              # Servidor de testes
-│   └── .env                        # Variáveis de ambiente
-│
-├── 📂 services/                     # ⚙️ Microserviços
-│   ├── ifood-token-service/        # Serviço de tokens OAuth2 iFood
-│   │   ├── src/                    # Código fonte TypeScript
-│   │   └── .env                    # Configurações do serviço
-│   └── python_services/            # Serviços Python alternativos
-│       ├── ifood_token_service.py
-│       └── ifood_merchant_service.py
-│
-├── 📂 database/                     # 🗄️ Banco de Dados
-│   └── supabase/                   # Configurações Supabase
-│       ├── config.toml
-│       └── migrations/             # Migrações SQL
-│
-├── 📂 scripts-utils/                # 🛠️ Scripts Utilitários
-│   ├── check-*.js                  # Scripts de verificação
-│   ├── create-*.js                 # Scripts de criação
-│   └── db-tools.js                 # Ferramentas de banco
-│
-├── 📂 documentation/                # 📚 Documentação
-│   ├── DOCUMENTACAO_APIs_IFOOD.md
-│   ├── TOKEN_AUTO_RENEWAL.md
-│   └── MERCHANT_STATUS_SERVICE.md
-│
-├── 📂 n8n-workflows/                # 🔄 Workflows N8N
-│   ├── [CREATE] Token de Acesso.json
-│   └── [MERCHANT-STATUS] Verifica se a loja esta aberta.json
-│
-└── 📂 exports/                      # 📤 Arquivos Exportados
-    └── (PDFs, relatórios gerados)
+┌─────────────────────────────────────────────────────────────┐
+│                     Frontend (React/TypeScript)              │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐      │
+│  │ Orders   │ │ Shipping │ │ Reviews  │ │Analytics │      │
+│  │ Manager  │ │ Manager  │ │ Manager  │ │  Module  │      │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘      │
+└─────────────────────────┬───────────────────────────────────┘
+                          │ HTTP/WebSocket
+┌─────────────────────────┴───────────────────────────────────┐
+│                   Backend Services Layer                     │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐       │
+│  │ Express API  │ │Token Service │ │Polling Engine│       │
+│  │   Port 8080  │ │  Port 8081   │ │  30s cycle   │       │
+│  └──────────────┘ └──────────────┘ └──────────────┘       │
+└─────────────────────────┬───────────────────────────────────┘
+                          │ SQL/RPC
+┌─────────────────────────┴───────────────────────────────────┐
+│                        Supabase                              │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐      │
+│  │  Orders  │ │ Shipping │ │ Reviews  │ │Analytics │      │
+│  │  Tables  │ │  Tables  │ │  Tables  │ │  Tables  │      │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘      │
+└─────────────────────────┬───────────────────────────────────┘
+                          │ OAuth2/API
+┌─────────────────────────┴───────────────────────────────────┐
+│                        iFood API                             │
+│  Events • Orders • Virtual Bag • Reviews • Shipping         │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-## 🚀 Como Executar o Sistema Completo
+## 🚀 Módulos Implementados
 
-### 1️⃣ Frontend (Dashboard Principal)
+### Frontend Modules
+
+| Módulo | Status | Funcionalidades |
+|--------|--------|-----------------|
+| **IfoodOrdersManager** | ✅ 100% | Gestão completa do ciclo de pedidos, confirmação, cancelamento, status em tempo real |
+| **IfoodShippingManager** | ✅ 100% | Rastreamento de entregas, mapas interativos, gestão de motoristas, Safe Delivery |
+| **IfoodReviewsManager** | ✅ 100% | Respostas a avaliações, análise de sentimento, métricas de satisfação |
+| **IfoodApiConfig** | ✅ 100% | Configuração de credenciais, gestão de tokens OAuth2, health check |
+| **ShippingMap** | ✅ 100% | Visualização geográfica de entregas, heatmaps, análise por região |
+
+### Backend Services
+
+| Serviço | Porta | Responsabilidade |
+|---------|-------|------------------|
+| **Express API** | 8080 | API principal, roteamento, autenticação |
+| **Token Service** | 8081 | Gestão de tokens OAuth2, renovação automática |
+| **Polling Engine** | - | Sincronização em tempo real com iFood (30s) |
+
+### Integrações iFood API
+
+| API | Status | Uso |
+|-----|--------|-----|
+| **Events API** | ✅ Ativo | Recebimento de eventos de pedidos em tempo real |
+| **Orders API** | ✅ Ativo | Detalhes completos e gestão de pedidos |
+| **Virtual Bag** | ✅ Ativo | Importação de pedidos com itens detalhados |
+| **Reviews API** | ✅ Ativo | Sincronização e resposta a avaliações |
+| **Shipping API** | ✅ Ativo | Rastreamento e gestão de entregas |
+| **Safe Delivery** | ✅ Ativo | Avaliação de risco e segurança |
+
+## 📊 Estrutura do Banco de Dados
+
+### Tabelas Principais
+
+```sql
+-- Pedidos
+ifood_orders          -- Armazenamento completo de pedidos
+ifood_events          -- Log de eventos com status de confirmação
+ifood_polling_log     -- Histórico e métricas de polling
+
+-- Entregas
+ifood_shipping_status -- Status de entrega em tempo real
+ifood_shipping_events -- Eventos relacionados a entregas
+ifood_address_changes -- Solicitações de mudança de endereço
+ifood_safe_delivery   -- Scoring de segurança e risco
+ifood_delivery_persons -- Informações de entregadores
+
+-- Avaliações
+ifood_reviews         -- Avaliações de clientes
+ifood_review_replies  -- Respostas do estabelecimento
+ifood_review_summary  -- Estatísticas agregadas
+
+-- Analytics
+delivery_history      -- Histórico completo para heatmaps
+delivery_regions      -- Gestão de zonas de entrega
+delivery_grid_analytics -- Analytics baseado em grid
+neighborhood_trends   -- Métricas por bairro
+customer_location_analytics -- Insights geográficos
+```
+
+## 🔧 Instalação e Configuração
+
+### Pré-requisitos
+
+- Node.js 18+ e npm/yarn
+- Conta Supabase configurada
+- Credenciais iFood API (client_id, client_secret)
+- Git para versionamento
+
+### Instalação Rápida
+
 ```bash
+# 1. Clone o repositório
+git clone [seu-repositorio]
+cd plano-certo-hub
+
+# 2. Instale dependências do Frontend
 cd frontend/plano-certo-hub-insights
 npm install
-npm run dev
-# Acesse: http://localhost:5173
-```
 
-### 2️⃣ Backend (API Server)
-```bash
-cd backend
+# 3. Instale dependências do Backend
+cd ../../backend
 npm install
-node server.js
-# Rodando na porta 8080
-```
 
-### 3️⃣ Serviço de Token iFood
-```bash
+# 4. Instale dependências do Token Service
+cd ../services/ifood-token-service
+npm install
+
+# 5. Configure variáveis de ambiente (veja seção abaixo)
+
+# 6. Execute as migrações do banco
 cd services/ifood-token-service
-npm install
-npm run dev
-# Rodando na porta 8081
+node executeMigration.js
+
+# 7. Inicie os serviços (em terminais separados)
+# Terminal 1 - Backend
+cd backend && npm run dev
+
+# Terminal 2 - Token Service
+cd services/ifood-token-service && npm run dev
+
+# Terminal 3 - Frontend
+cd frontend/plano-certo-hub-insights && npm run dev
 ```
 
-### 4️⃣ Serviços Python (Opcional)
+### Variáveis de Ambiente
+
+#### Backend (.env)
+```env
+PORT=8080
+SUPABASE_URL=sua_url_supabase
+SUPABASE_ANON_KEY=sua_chave_anonima
+SUPABASE_SERVICE_KEY=sua_chave_servico
+```
+
+#### Token Service (.env)
+```env
+PORT=8081
+SUPABASE_URL=sua_url_supabase
+SUPABASE_SERVICE_KEY=sua_chave_servico
+IFOOD_CLIENT_ID=seu_client_id
+IFOOD_CLIENT_SECRET=seu_client_secret
+```
+
+#### Frontend (.env)
+```env
+VITE_SUPABASE_URL=sua_url_supabase
+VITE_SUPABASE_ANON_KEY=sua_chave_anonima
+VITE_API_URL=http://localhost:8080
+VITE_TOKEN_SERVICE_URL=http://localhost:8081
+```
+
+## 🎯 Uso do Sistema
+
+### 1. Configuração Inicial
+1. Acesse o sistema em `http://localhost:5173`
+2. Faça login com suas credenciais
+3. Navegue até **Configurações → API iFood**
+4. Insira suas credenciais do iFood
+5. Teste a conexão
+
+### 2. Gerenciamento de Pedidos
+1. Acesse **Pedidos → Gestão de Pedidos**
+2. O sistema iniciará polling automático
+3. Novos pedidos aparecerão em tempo real
+4. Use os botões de ação para gerenciar o ciclo
+
+### 3. Acompanhamento de Entregas
+1. Acesse **Entregas → Rastreamento**
+2. Visualize entregas ativas no mapa
+3. Monitore status e localização dos entregadores
+4. Gerencie solicitações de mudança de endereço
+
+### 4. Resposta a Avaliações
+1. Acesse **Avaliações → Gerenciar**
+2. Veja novas avaliações em tempo real
+3. Responda diretamente pelo sistema
+4. Acompanhe métricas de satisfação
+
+## 📈 Funcionalidades Avançadas
+
+### Heatmap de Vendas
+```javascript
+// Implementação disponível em ShippingMap.tsx
+// Visualização automática de densidade de pedidos por região
+// Dados agregados em grid de 500m para análise
+```
+
+### Analytics Geográfico
+- **Top Regiões**: Identificação de áreas mais lucrativas
+- **Tendências**: Análise temporal por bairro
+- **Horários de Pico**: Padrões de demanda por localização
+- **Otimização de Entrega**: Cálculo de rotas e tempos médios
+
+### Sistema de Polling Inteligente
+- **Alta Precisão**: Correção automática de drift
+- **Deduplicação**: Prevenção de eventos duplicados
+- **Cache Otimizado**: Token (5min) e Merchant (10min)
+- **Monitoramento**: Métricas de performance em tempo real
+
+## 🛠️ Desenvolvimento
+
+### Estrutura de Pastas
+```
+plano-certo-hub/
+├── frontend/
+│   └── plano-certo-hub-insights/
+│       ├── src/
+│       │   ├── components/
+│       │   │   └── modules/      # Módulos principais
+│       │   ├── pages/            # Páginas e rotas
+│       │   └── lib/              # Utilitários
+│       └── public/
+├── backend/
+│   ├── server.js                 # API Express principal
+│   └── routes/                   # Rotas da API
+├── services/
+│   └── ifood-token-service/
+│       ├── src/
+│       │   ├── server.ts         # Servidor do serviço
+│       │   ├── ifoodOrderService.ts
+│       │   └── ifoodPollingService.ts
+│       └── migrations/           # Scripts SQL
+└── docs/
+    └── [esta documentação]
+```
+
+### Comandos Úteis
+
 ```bash
-cd services/python_services
-pip install -r requirements.txt
-python api_server.py
-# Rodando na porta 8000
+# Frontend
+npm run dev          # Desenvolvimento com hot-reload
+npm run build        # Build de produção
+npm run preview      # Preview do build
+
+# Backend/Services
+npm run dev          # Desenvolvimento com nodemon
+npm start            # Produção
+npm test             # Executar testes
+
+# Database
+node executeMigration.js  # Rodar migrações
 ```
 
-## 🔧 Configuração de Ambiente
+### Padrões de Código
+- **TypeScript** para type safety
+- **ESLint** para linting
+- **Prettier** para formatação
+- **Conventional Commits** para mensagens de commit
 
-Todos os arquivos `.env` já estão configurados:
-- ✅ `backend/.env` - Porta 8080
-- ✅ `services/ifood-token-service/.env` - Porta 8081
-- ✅ `frontend/plano-certo-hub-insights/.env` - Frontend
+## 🔒 Segurança
 
-## 📋 Descrição dos Componentes
+### Implementações de Segurança
+- ✅ Autenticação via Supabase Auth
+- ✅ Row Level Security (RLS) no banco
+- ✅ Validação de merchant_id em todas operações
+- ✅ Tokens OAuth2 com renovação automática
+- ✅ CORS configurado para domínios específicos
+- ✅ Rate limiting em APIs críticas
+- ✅ Sanitização de inputs do usuário
 
-### Frontend
-- **plano-certo-hub-insights**: Dashboard React com análises e relatórios
-- **ccflare**: Aplicação adicional com TUI e servidor
+### Boas Práticas
+- Nunca commitar arquivos `.env`
+- Rotacionar tokens regularmente
+- Usar HTTPS em produção
+- Monitorar logs de acesso
+- Implementar backup regular do banco
 
-### Backend
-- Servidor Express.js que gerencia APIs e integrações
+## 📞 Suporte e Troubleshooting
 
-### Services
-- **ifood-token-service**: Gerenciamento de tokens OAuth2 do iFood
-  - Renovação automática de tokens
-  - Verificação de validade
-  - Scheduler preventivo
-- **python_services**: Implementações alternativas em Python
+### Problemas Comuns
 
-### Database
-- Configurações e migrações do Supabase
-- Tabelas: tokens, merchants, products, clients
+| Problema | Solução |
+|----------|---------|
+| Polling não inicia | Verifique credenciais iFood e tokens |
+| Pedidos não aparecem | Confirme merchant_id correto |
+| Erro de CORS | Verifique configuração de domínios |
+| Token expirado | Sistema renova automaticamente em 5min |
 
-### Scripts-Utils
-- Ferramentas de desenvolvimento e manutenção
-- Scripts de verificação e criação de dados
+### Logs e Monitoramento
+```bash
+# Ver logs do Token Service
+tail -f services/ifood-token-service/logs/app.log
 
-### N8N-Workflows
-- Workflows exportados do N8N para automação
+# Monitorar polling
+SELECT * FROM ifood_polling_log ORDER BY created_at DESC LIMIT 10;
 
-## 🌐 Arquitetura
-
+# Verificar eventos
+SELECT * FROM ifood_events WHERE acknowledged = false;
 ```
-Frontend (React) ←→ Backend (Express) ←→ Supabase
-                           ↓
-                  Token Service (Node.js)
-                           ↓
-                      iFood API
-```
 
-## 📞 Suporte
+## 🚀 Deploy em Produção
 
-Consulte a documentação em `documentation/` para mais detalhes sobre cada módulo.
+### Recomendações
+1. **Frontend**: Deploy via Vercel/Netlify
+2. **Backend**: Deploy em Railway/Render
+3. **Database**: Supabase (já em cloud)
+4. **Monitoring**: Sentry para error tracking
+
+### Checklist de Deploy
+- [ ] Variáveis de ambiente configuradas
+- [ ] SSL/HTTPS habilitado
+- [ ] Backup automático configurado
+- [ ] Monitoring ativo
+- [ ] Rate limiting configurado
+- [ ] Logs centralizados
+
+## 📚 Documentação Adicional
+
+- [Critérios de Homologação iFood](./Criterios_homologação_Ifood.md)
+- [Especificação da API de Reviews](./IFOOD_REVIEW_API_SPECIFICATION.md)
+- [Guia de Analytics de Entregas](./DELIVERY_ANALYTICS_GUIDE.md)
+- [Implementação Virtual Bag](./VIRTUAL_BAG_IMPLEMENTATION.md)
+- [Status de Endpoints Pendentes](./IFOOD_ENDPOINTS_PENDENTES.md)
+
+## 📄 Licença
+
+Proprietary - Todos os direitos reservados
+
+---
+
+**Última atualização**: Setembro 2024
+**Versão**: 2.0.0
+**Status**: Production Ready 🚀

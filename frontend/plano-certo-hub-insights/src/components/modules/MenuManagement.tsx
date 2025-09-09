@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import {
   Table,
@@ -805,6 +806,64 @@ Renove o token na página de Tokens do iFood`);
     }
   };
 
+  // Função para fazer upload rápido de imagem direto da tabela
+  const handleQuickImageUpload = async (productId: string, base64Image: string) => {
+    if (!selectedClient) return;
+
+    try {
+      const userId = getCurrentUserId();
+      const merchantId = selectedClient;
+      
+      // Mostrar loading
+      toast.loading('Fazendo upload da imagem...');
+
+      // Fazer upload da imagem
+      const uploadResponse = await fetch(`http://localhost:8085/merchants/${merchantId}/image/upload`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          image: base64Image
+        })
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error('Erro ao fazer upload da imagem');
+      }
+
+      const uploadResult = await uploadResponse.json();
+      const imagePath = uploadResult.data?.path || base64Image;
+
+      // Atualizar o produto com a nova imagem
+      const updateResponse = await fetch(`http://localhost:8085/merchants/${merchantId}/products/${productId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          imagePath: imagePath
+        })
+      });
+
+      if (!updateResponse.ok) {
+        throw new Error('Erro ao atualizar produto');
+      }
+
+      toast.dismiss();
+      toast.success('Imagem adicionada com sucesso!');
+      
+      // Recarregar produtos
+      await loadProducts();
+      
+    } catch (error: any) {
+      toast.dismiss();
+      toast.error(`Erro ao fazer upload: ${error.message}`);
+    }
+  };
+
   // Função para fazer upload de imagem
   const handleUploadImage = async (itemId: string, base64Image: string) => {
     if (!selectedClient) return;
@@ -1143,12 +1202,97 @@ Renove o token na página de Tokens do iFood`);
                             </div>
                           </TableCell>
                           <TableCell>
-                            <div className="flex items-center space-x-2">
-                              <Image className={`h-4 w-4 ${product.imagePath ? 'text-green-500' : 'text-gray-400'}`} />
-                              <span className="text-sm">
-                                {product.imagePath ? 'Sim' : 'Não'}
-                              </span>
-                            </div>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-auto p-1 hover:bg-gray-100"
+                                    onClick={() => {
+                                const input = document.createElement('input');
+                                input.type = 'file';
+                                input.accept = 'image/jpeg,image/jpg,image/png,image/heic';
+                                input.onchange = async (e: any) => {
+                                  const file = e.target.files[0];
+                                  if (file) {
+                                    // Validações do iFood para PRODUTOS
+                                    // 1. Tamanho máximo: 10MB
+                                    if (file.size > 10 * 1024 * 1024) {
+                                      const fileSizeKB = Math.round(file.size / 1024);
+                                      const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+                                      toast.error(`⚠️ Arquivo muito grande! Seu arquivo tem ${fileSizeMB}MB. Máximo permitido: 10MB`);
+                                      return;
+                                    }
+                                    
+                                    // 2. Formato permitido (JPG, JPEG, PNG, HEIC)
+                                    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/heic'];
+                                    if (!allowedTypes.includes(file.type.toLowerCase())) {
+                                      toast.error('❌ Formato inválido! Use apenas JPG, JPEG, PNG ou HEIC');
+                                      return;
+                                    }
+                                    
+                                    // 3. Validar dimensões mínimas (300x275px)
+                                    const img = document.createElement('img');
+                                    img.onload = async () => {
+                                      if (img.width < 300 || img.height < 275) {
+                                        toast.error(`📏 Imagem muito pequena! Sua imagem tem ${img.width}x${img.height}px. Mínimo: 300x275px`);
+                                        URL.revokeObjectURL(img.src);
+                                        return;
+                                      }
+                                      
+                                      URL.revokeObjectURL(img.src);
+                                      
+                                      // Se passou todas as validações, faz o upload
+                                      const reader = new FileReader();
+                                      reader.onloadend = async () => {
+                                        const base64 = reader.result as string;
+                                        toast.info('📤 Enviando imagem...');
+                                        await handleQuickImageUpload(product.id, base64);
+                                      };
+                                      reader.readAsDataURL(file);
+                                    };
+                                    
+                                    img.onerror = () => {
+                                      toast.error('❌ Erro ao processar imagem');
+                                      URL.revokeObjectURL(img.src);
+                                    };
+                                    
+                                    // Criar URL temporária para validar dimensões
+                                    img.src = URL.createObjectURL(file);
+                                  }
+                                };
+                                input.click();
+                              }}
+                                  >
+                                    <div className="flex items-center space-x-2">
+                                      {product.imagePath ? (
+                                        <>
+                                          <Image className="h-4 w-4 text-green-500" />
+                                          <span className="text-sm text-green-600">Sim</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Upload className="h-4 w-4 text-gray-400" />
+                                          <span className="text-sm text-gray-500">Adicionar</span>
+                                        </>
+                                      )}
+                                    </div>
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="left" className="max-w-xs">
+                                  <div className="space-y-2">
+                                    <p className="font-semibold text-sm">📸 Especificações iFood - Produtos</p>
+                                    <div className="text-xs space-y-1">
+                                      <p>✅ Formatos: JPG, JPEG, PNG ou HEIC</p>
+                                      <p>📦 Tamanho máximo: 10 MB</p>
+                                      <p>📐 Resolução mínima: 300x275 px</p>
+                                      <p className="text-green-600 mt-2">✨ Dica: Use imagens de alta qualidade</p>
+                                    </div>
+                                  </div>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center space-x-2">

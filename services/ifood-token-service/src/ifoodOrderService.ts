@@ -278,7 +278,8 @@ export class IFoodOrderService {
   private async sendStatusUpdateToIfood(
     ifoodOrderId: string, 
     newStatus: OrderEntity['status'],
-    merchantId: string
+    merchantId: string,
+    additionalData?: any
   ): Promise<boolean> {
     try {
       // Get current access token
@@ -322,6 +323,19 @@ export class IFoodOrderService {
         return true;
       }
 
+      // Prepare request body based on status
+      let requestBody: any = {};
+      if (newStatus === 'CANCELLED') {
+        // For cancellation, we need to send both reason and cancellation code
+        const cancellationCode = additionalData?.cancellationCode || '503'; // Default to ITEM_UNAVAILABLE
+        const cancellationReason = additionalData?.cancellation_reason || 'Cancelled by merchant';
+        requestBody = { 
+          reason: cancellationReason,
+          cancellationCode: cancellationCode 
+        };
+        console.log(`📦 [ORDER-SERVICE] Cancellation request with code: ${cancellationCode} and reason: ${cancellationReason}`);
+      }
+
       // Make the API call to iFood
       console.log(`🌐 [ORDER-SERVICE] Calling iFood API: ${method} https://merchant-api.ifood.com.br${endpoint}`);
       console.log(`🔑 [ORDER-SERVICE] Using token: ${tokenResult.accessToken?.substring(0, 20)}...`);
@@ -333,7 +347,7 @@ export class IFoodOrderService {
           'Authorization': `Bearer ${tokenResult.accessToken}`,
           'Content-Type': 'application/json'
         },
-        data: method === 'POST' ? {} : undefined
+        data: method === 'POST' ? requestBody : undefined
       });
 
       console.log(`📥 [ORDER-SERVICE] iFood API Response Status: ${response.status}`);
@@ -396,9 +410,10 @@ export class IFoodOrderService {
         }
       }
 
-      // Apply additional data if provided
+      // Apply additional data if provided (but exclude cancellationCode as it's not a DB field)
       if (additionalData) {
-        Object.assign(updateData, additionalData);
+        const { cancellationCode, ...dataToStore } = additionalData as any;
+        Object.assign(updateData, dataToStore);
       }
 
       // Update in database
@@ -422,7 +437,8 @@ export class IFoodOrderService {
       const ifoodApiUpdated = await this.sendStatusUpdateToIfood(
         ifoodOrderId, 
         newStatus, 
-        orderData.merchant_id
+        orderData.merchant_id,
+        additionalData
       );
 
       console.log(`✅ [ORDER-SERVICE] Order ${ifoodOrderId} status updated to ${newStatus} (iFood API: ${ifoodApiUpdated ? 'success' : 'failed'})`);

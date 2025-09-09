@@ -1265,9 +1265,54 @@ export class IFoodProductService {
         };
       }
 
+      // Validações do iFood para PRODUTOS
+      // 1. Verificar se a imagem foi fornecida
+      if (!imageData.image) {
+        return {
+          success: false,
+          error: 'Imagem não fornecida'
+        };
+      }
+      
+      // 2. Extrair e validar o formato da imagem (JPG, JPEG, PNG, HEIC)
+      let formattedImage = imageData.image;
+      const matches = formattedImage.match(/^data:image\/(jpeg|jpg|png|heic);base64,(.+)$/i);
+      
+      if (!matches) {
+        // Se não tem o prefixo data URI, adiciona com tipo padrão
+        if (!formattedImage.startsWith('data:image')) {
+          formattedImage = `data:image/jpeg;base64,${formattedImage}`;
+        } else {
+          return {
+            success: false,
+            error: 'Formato de imagem inválido. Use apenas JPG, JPEG, PNG ou HEIC'
+          };
+        }
+      }
+      
+      // 3. Validar tamanho (máximo 10MB para produtos)
+      try {
+        const base64Data = formattedImage.split(',')[1] || formattedImage;
+        const buffer = Buffer.from(base64Data, 'base64');
+        
+        if (buffer.length > 10 * 1024 * 1024) {
+          const sizeMB = (buffer.length / (1024 * 1024)).toFixed(2);
+          return {
+            success: false,
+            error: `Imagem muito grande (${sizeMB}MB). Máximo 10MB para produtos do iFood`
+          };
+        }
+        
+        const sizeKB = (buffer.length / 1024).toFixed(2);
+        const sizeMB = (buffer.length / (1024 * 1024)).toFixed(2);
+        console.log(`📸 [UPLOAD IMAGE] Tamanho da imagem: ${sizeKB}KB (${sizeMB}MB)`);
+      } catch (err) {
+        console.error('❌ [UPLOAD IMAGE] Erro ao validar tamanho:', err);
+      }
+      
       const url = `${this.IFOOD_API_BASE_URL}/catalog/v2.0/merchants/${merchantId}/image/upload`;
       
-      const response = await axios.post(url, imageData, {
+      const response = await axios.post(url, { image: formattedImage }, {
         headers: {
           'Authorization': `Bearer ${tokenData.access_token}`,
           'Content-Type': 'application/json'
