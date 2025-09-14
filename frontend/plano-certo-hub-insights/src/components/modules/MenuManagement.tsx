@@ -576,7 +576,7 @@ Renove o token na página de Tokens do iFood`);
 
         if (uploadResponse.ok) {
           const uploadResult = await uploadResponse.json();
-          imagePath = uploadResult.data?.path || imagePath;
+          imagePath = uploadResult.data?.imagePath || imagePath;
         }
       }
 
@@ -806,37 +806,20 @@ Renove o token na página de Tokens do iFood`);
     }
   };
 
-  // Função para fazer upload rápido de imagem direto da tabela
+  // Função para fazer upload rápido de imagem direto da tabela (usando novo workflow duas etapas)
   const handleQuickImageUpload = async (productId: string, base64Image: string) => {
     if (!selectedClient) return;
 
     try {
       const userId = getCurrentUserId();
       const merchantId = selectedClient;
-      
+
       // Mostrar loading
-      toast.loading('Fazendo upload da imagem...');
+      toast.loading('📸 Fazendo upload da imagem...');
 
-      // Fazer upload da imagem
-      const uploadResponse = await fetch(`http://localhost:8085/merchants/${merchantId}/image/upload`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          user_id: userId,
-          image: base64Image
-        })
-      });
-
-      if (!uploadResponse.ok) {
-        throw new Error('Erro ao fazer upload da imagem');
-      }
-
-      const uploadResult = await uploadResponse.json();
-      const imagePath = uploadResult.data?.path || base64Image;
-
-      // Atualizar o produto com a nova imagem
+      // Usar o novo endpoint PUT que faz o workflow completo de duas etapas internamente
+      // 1. Faz upload da imagem para o iFood
+      // 2. Usa o caminho retornado para atualizar o produto
       const updateResponse = await fetch(`http://localhost:8085/merchants/${merchantId}/products/${productId}`, {
         method: 'PUT',
         headers: {
@@ -844,19 +827,32 @@ Renove o token na página de Tokens do iFood`);
         },
         body: JSON.stringify({
           user_id: userId,
-          imagePath: imagePath
+          image: base64Image // Enviamos a imagem base64 diretamente
         })
       });
 
       if (!updateResponse.ok) {
-        throw new Error('Erro ao atualizar produto');
+        const errorData = await updateResponse.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Erro ao processar imagem');
       }
 
+      const result = await updateResponse.json();
+
       toast.dismiss();
-      toast.success('Imagem adicionada com sucesso!');
-      
+
+      if (result.workflow === 'two-step-completed') {
+        toast.success('✅ Imagem enviada para iFood e produto atualizado!');
+        console.log('🎯 Upload completed:', {
+          image_uploaded: result.image_uploaded,
+          image_path: result.image_path,
+          product_updated: result.product_updated
+        });
+      } else {
+        toast.success('Imagem adicionada com sucesso!');
+      }
+
       // Recarregar produtos
-      await loadProducts();
+      await forceRefresh();
       
     } catch (error: any) {
       toast.dismiss();
@@ -1248,7 +1244,7 @@ Renove o token na página de Tokens do iFood`);
                                       reader.onloadend = async () => {
                                         const base64 = reader.result as string;
                                         toast.info('📤 Enviando imagem...');
-                                        await handleQuickImageUpload(product.id, base64);
+                                        await handleQuickImageUpload(product.product_id, base64);
                                       };
                                       reader.readAsDataURL(file);
                                     };

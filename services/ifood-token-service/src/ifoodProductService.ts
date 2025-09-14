@@ -875,12 +875,12 @@ export class IFoodProductService {
   }
 
   /**
-   * Criar ou atualizar item - VERSÃO SIMPLES seguindo EXATAMENTE a documentação
-   * PUT /catalog/v2.0/merchants/{merchantId}/items
+   * Criar ou atualizar item - VERSÃO COM UPLOAD DE IMAGEM
+   * Fluxo: 1. Upload imagem → 2. Criar/atualizar produto com imagePath
    */
   async createOrUpdateItem(userId: string, merchantId: string, itemData: any): Promise<ServiceResponse> {
     try {
-      console.log('🍔 [SIMPLE] Recebendo dados:', itemData);
+      console.log('🍔 [PRODUTO COM IMAGEM] Recebendo dados:', itemData);
 
       // 1. Buscar token
       const { data: tokenData, error: tokenError } = await this.supabase
@@ -893,17 +893,41 @@ export class IFoodProductService {
         return { success: false, error: 'Token não encontrado' };
       }
 
-      // 2. Detectar se é criação ou atualização
+      // 2. PRIMEIRO: Upload da imagem se fornecida
+      let imagePath = null;
+      if (itemData.image && itemData.image.trim() !== '') {
+        console.log('📸 [UPLOAD IMAGEM] Fazendo upload da imagem primeiro...');
+
+        const uploadResult = await this.uploadImage(userId, merchantId, {
+          image: itemData.image
+        });
+
+        if (uploadResult.success) {
+          // Extrair o caminho da imagem da resposta do iFood
+          imagePath = uploadResult.data?.imagePath || uploadResult.data?.path || uploadResult.data?.url;
+          console.log('✅ [UPLOAD IMAGEM] Imagem enviada com sucesso. Caminho:', imagePath);
+        } else {
+          console.error('❌ [UPLOAD IMAGEM] Erro no upload:', uploadResult.error);
+          return {
+            success: false,
+            error: `Erro no upload da imagem: ${uploadResult.error}`
+          };
+        }
+      } else {
+        console.log('📷 [SEM IMAGEM] Produto será criado sem imagem');
+      }
+
+      // 3. Detectar se é criação ou atualização
       const isUpdate = itemData.item.id && itemData.item.productId;
       const productUuid = isUpdate ? itemData.item.productId : randomUUID();
 
       console.log(`🔍 [OPERATION] ${isUpdate ? 'ATUALIZAÇÃO' : 'CRIAÇÃO'} de produto`);
       console.log(`🔑 [UUID] Usando productId: ${productUuid}`);
 
-      // 3. Montar payload EXATAMENTE como documentação do iFood
+      // 4. Montar payload com imagePath se disponível
       const ifoodPayload: any = {
         item: {
-          productId: productUuid,  // UUID existente ou novo
+          productId: productUuid,
           status: itemData.item.status || 'AVAILABLE',
           price: {
             value: itemData.item.price.value
@@ -912,11 +936,17 @@ export class IFoodProductService {
         },
         products: [
           {
-            id: productUuid,  // Mesmo UUID
+            id: productUuid,
             name: itemData.products[0].name
           }
         ]
       };
+
+      // Adicionar imagePath ao produto se disponível
+      if (imagePath) {
+        ifoodPayload.products[0].imagePath = imagePath;
+        console.log('🖼️ [IMAGEM ADICIONADA] ImagePath adicionado ao produto:', imagePath);
+      }
 
       // Se é atualização, adicionar o ID do item
       if (isUpdate && itemData.item.id) {
@@ -928,7 +958,7 @@ export class IFoodProductService {
       if (itemData.item.price.originalValue) {
         ifoodPayload.item.price.originalValue = itemData.item.price.originalValue;
       }
-      
+
       if (itemData.products[0].description) {
         ifoodPayload.products[0].description = itemData.products[0].description;
       }
@@ -937,9 +967,9 @@ export class IFoodProductService {
         ifoodPayload.item.externalCode = itemData.item.externalCode;
       }
 
-      console.log('📤 [SIMPLE] Enviando para iFood:', JSON.stringify(ifoodPayload, null, 2));
+      console.log('📤 [PRODUTO] Enviando para iFood com imagem:', JSON.stringify(ifoodPayload, null, 2));
 
-      // 3. Enviar para iFood API
+      // 5. Enviar para iFood API
       const url = `${this.IFOOD_API_BASE_URL}/catalog/v2.0/merchants/${merchantId}/items`;
       const response = await axios.put(url, ifoodPayload, {
         headers: {
@@ -949,7 +979,7 @@ export class IFoodProductService {
         }
       });
 
-      console.log('✅ [SIMPLE] Resposta iFood:', response.data);
+      console.log('✅ [PRODUTO] Produto criado/atualizado com sucesso:', response.data);
 
       // 4. Salvar no banco local
       if (response.data) {
@@ -1311,12 +1341,25 @@ export class IFoodProductService {
       }
       
       const url = `${this.IFOOD_API_BASE_URL}/catalog/v2.0/merchants/${merchantId}/image/upload`;
-      
-      const response = await axios.post(url, { image: formattedImage }, {
-        headers: {
-          'Authorization': `Bearer ${tokenData.access_token}`,
-          'Content-Type': 'application/json'
-        }
+
+      const requestBody = { image: formattedImage };
+      const requestHeaders = {
+        'Authorization': `Bearer ${tokenData.access_token}`,
+        'Content-Type': 'application/json'
+      };
+
+      console.log('📤 [UPLOAD IMAGE] Requisição completa para iFood:');
+      console.log('🌐 [URL]:', url);
+      console.log('📋 [HEADERS]:', {
+        'Authorization': `Bearer ${tokenData.access_token?.substring(0, 20)}...`,
+        'Content-Type': requestHeaders['Content-Type']
+      });
+      console.log('📦 [BODY]:', {
+        image: `${formattedImage.substring(0, 100)}... (${formattedImage.length} chars)`
+      });
+
+      const response = await axios.post(url, requestBody, {
+        headers: requestHeaders
       });
 
       console.log('✅ [UPLOAD IMAGE] Imagem enviada com sucesso');
