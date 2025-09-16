@@ -320,6 +320,7 @@ export default function OpeningHoursManager() {
       console.log('\n🔄 ================== FRONTEND POLLING CHECK ==================');
       console.log('⏰ Timestamp:', new Date().toISOString());
       console.log('🎯 Verificando se dados foram atualizados no banco...');
+      fetchMerchants(); // Atualizar lista de horários também
       calculateRealPeakHours();
       console.log('✅ ================== FRONTEND POLLING CHECK CONCLUÍDO ==================\n');
     }, 10000); // A cada 10 segundos
@@ -521,7 +522,7 @@ export default function OpeningHoursManager() {
       
       setTimeout(() => {
         fetchMerchants();
-      }, 1000);
+      }, 5000);
 
     } catch (error: any) {
       console.error('Error deleting opening hours:', error);
@@ -582,7 +583,7 @@ export default function OpeningHoursManager() {
       // Refresh merchants data after a brief delay
       setTimeout(() => {
         fetchMerchants();
-      }, 2000);
+      }, 5000);
 
     } catch (error: any) {
       console.error('Error updating opening hours:', error);

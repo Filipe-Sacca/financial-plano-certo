@@ -13,6 +13,7 @@ import IFoodReviewService from './ifoodReviewService';
 import IFoodShippingService from './ifoodShippingService';
 import { ResourceMonitor, ApiResponseMonitor, EventDeduplicator, RateLimiter, pollingUtils } from './utils/pollingUtils';
 import { tokenScheduler } from './tokenScheduler';
+import { productSyncScheduler } from './productSyncScheduler';
 import { logCleanupScheduler } from './logCleanupScheduler';
 import { TokenRequest } from './types';
 
@@ -22,16 +23,49 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 8085;
 
+// Configure CORS to allow requests from frontend
+app.use(cors({
+  origin: ['http://localhost:8082', 'http://localhost:8083', 'http://localhost:3000'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 // Initialize Supabase client
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+// Helper function for immediate product sync after edits/uploads
+async function triggerImmediateProductSync(merchantId: string, productId: string, userId: string): Promise<void> {
+  try {
+    console.log(`🔄 [IMMEDIATE SYNC] Triggering sync for product ${productId} in merchant ${merchantId}`);
+
+    const baseUrl = `http://localhost:${PORT}`;
+    const response = await fetch(`${baseUrl}/merchants/${merchantId}/products/${productId}?user_id=${userId}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (response.ok) {
+      const data = await response.json() as any;
+      console.log(`✅ [IMMEDIATE SYNC] Product ${productId} synced successfully - Updated: ${data.product?.name || 'N/A'}`);
+    } else {
+      const errorText = await response.text();
+      console.error(`❌ [IMMEDIATE SYNC] Failed to sync product ${productId}: ${response.status} - ${errorText}`);
+    }
+  } catch (error) {
+    console.error(`❌ [IMMEDIATE SYNC] Error syncing product ${productId}:`, error);
+  }
+}
+
 // Middleware
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:8080', 'http://localhost:8081', 'http://localhost:8082', 'http://localhost:8086', 'http://localhost:3000', 'http://localhost:3001'],
+  origin: ['http://localhost:5173', 'http://localhost:8080', 'http://localhost:8081', 'http://localhost:8082', 'http://localhost:8083', 'http://localhost:8086', 'http://localhost:3000', 'http://localhost:3001'],
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-requested-with'],
   optionsSuccessStatus: 200
 }));
@@ -77,6 +111,10 @@ app.get('/', (req, res) => {
       tokenSchedulerStart: 'POST /token/scheduler/start',
       tokenSchedulerStop: 'POST /token/scheduler/stop',
       tokenSchedulerStatus: 'GET /token/scheduler/status',
+      productSyncStart: 'POST /products/sync/scheduler/start',
+      productSyncStop: 'POST /products/sync/scheduler/stop',
+      productSyncStatus: 'GET /products/sync/scheduler/status',
+      productSyncManual: 'POST /merchants/:merchantId/products/sync',
       merchant: 'POST /merchant',
       merchantCheck: 'GET /merchant/check/:id',
       merchantsSyncAll: 'POST /merchants/sync-all',
@@ -113,8 +151,13 @@ app.get('/', (req, res) => {
       reviewSummary: 'GET /reviews/:merchantId/summary',
       reviewSync: 'POST /reviews/:merchantId/sync',
       reviewsAttention: 'GET /reviews/:merchantId/attention',
-      // NEW: iFood Shipping Module Endpoints
-      updateProductImage: 'PUT /merchants/:merchantId/products/:productId'
+      // NEW: iFood Shipping Module Endpoints (Two-Step Workflow)
+      uploadProductImage: 'POST /merchants/:merchantId/products/:productId/upload-image',
+      updateProductImage: 'PUT /merchants/:merchantId/products/:productId',
+      getProduct: 'GET /merchants/:merchantId/products/:productId',
+      getProductImages: 'GET /merchants/:merchantId/product-images',
+      // Legacy: Single upload endpoint (still available)
+      imageUpload: 'POST /merchants/:merchantId/image/upload'
     },
     documentation: 'Check /health for service health',
     timestamp: new Date().toISOString()
@@ -386,6 +429,113 @@ app.get('/token/scheduler/status', (req, res) => {
     });
   } catch (error: any) {
     console.error('❌ Error getting scheduler status:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// ====================================================================
+// PRODUCT SYNC SCHEDULER ENDPOINTS
+// ====================================================================
+
+// Start product sync scheduler
+app.post('/products/sync/scheduler/start', (req, res) => {
+  try {
+    const { intervalMinutes } = req.body;
+    const interval = intervalMinutes && intervalMinutes > 5 ? intervalMinutes : 30; // Default 30 minutes, minimum 5 minutes
+
+    productSyncScheduler.start(interval);
+
+    res.json({
+      success: true,
+      message: `Product sync scheduler started with ${interval} minute interval`,
+      status: productSyncScheduler.getStatus()
+    });
+  } catch (error: any) {
+    console.error('❌ Error starting product sync scheduler:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Stop product sync scheduler
+app.post('/products/sync/scheduler/stop', (req, res) => {
+  try {
+    productSyncScheduler.stop();
+
+    res.json({
+      success: true,
+      message: 'Product sync scheduler stopped',
+      status: productSyncScheduler.getStatus()
+    });
+  } catch (error: any) {
+    console.error('❌ Error stopping product sync scheduler:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Get product sync scheduler status
+app.get('/products/sync/scheduler/status', (req, res) => {
+  try {
+    const status = productSyncScheduler.getStatus();
+
+    res.json({
+      success: true,
+      scheduler: 'Product Sync',
+      ...status
+    });
+  } catch (error: any) {
+    console.error('❌ Error getting product sync scheduler status:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Manual product sync for specific merchant
+app.post('/merchants/:merchantId/products/sync', async (req, res) => {
+  try {
+    const { merchantId } = req.params;
+    const { user_id } = req.body;
+
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'user_id is required'
+      });
+    }
+
+    console.log(`🔄 [MANUAL SYNC] Starting manual sync for merchant: ${merchantId}`);
+
+    const result = await productSyncScheduler.syncMerchant(merchantId, user_id);
+
+    if (result.success) {
+      res.json({
+        success: true,
+        message: `Product sync completed for merchant ${merchantId}`,
+        synced: result.synced,
+        errors: result.errors,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        error: 'Failed to sync products',
+        synced: result.synced,
+        errors: result.errors
+      });
+    }
+
+  } catch (error: any) {
+    console.error('❌ Error in manual product sync:', error);
     res.status(500).json({
       success: false,
       error: error.message
@@ -1990,11 +2140,15 @@ app.get('/merchants/:merchantId/products', async (req, res) => {
   }
 });
 
-// Update Product with Image (Two-step workflow: Upload image first, then update product)
-app.put('/merchants/:merchantId/products/:productId', async (req, res) => {
+// ====================================================================
+// IFOOD PRODUCT IMAGE MANAGEMENT ENDPOINTS
+// ====================================================================
+
+// Step 1: Upload Image to iFood and Store Path in Database (extends existing upload endpoint)
+app.post('/merchants/:merchantId/products/:productId/upload-image', async (req, res) => {
   try {
     const { merchantId, productId } = req.params;
-    const { user_id, image, productName } = req.body;
+    const { user_id, image } = req.body;
 
     if (!user_id) {
       return res.status(400).json({ success: false, error: 'user_id is required' });
@@ -2004,6 +2158,8 @@ app.put('/merchants/:merchantId/products/:productId', async (req, res) => {
       return res.status(400).json({ success: false, error: 'image (base64) is required' });
     }
 
+    console.log(`📸 [UPLOAD IMAGE] Starting image upload for product ${productId} (client: ${merchantId})`);
+
     const supabaseUrl = process.env.SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_ANON_KEY;
 
@@ -2011,16 +2167,129 @@ app.put('/merchants/:merchantId/products/:productId', async (req, res) => {
       return res.status(500).json({ success: false, error: 'Missing Supabase configuration' });
     }
 
-    console.log(`📸 [UPDATE PRODUCT] Starting two-step workflow for product ${productId}`);
     const { createClient } = require('@supabase/supabase-js');
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // STEP 1: First convert user_id to real merchant_id
+    // Get the real merchant_id from ifood_merchants table (same logic as existing upload endpoint)
     const { data: merchantData, error: merchantError } = await supabase
       .from('ifood_merchants')
       .select('merchant_id, name')
       .eq('user_id', user_id)
-      .eq('client_id', merchantId)
+      .single();
+
+    if (merchantError || !merchantData) {
+      console.error('❌ [UPLOAD IMAGE] Merchant not found for user:', user_id);
+      return res.status(404).json({
+        success: false,
+        error: 'Merchant not found for this user'
+      });
+    }
+
+    const realMerchantId = merchantData.merchant_id;
+    console.log(`📸 [UPLOAD IMAGE] Using real merchant_id: ${realMerchantId} (${merchantData.name})`);
+
+    // Upload image to iFood using EXACTLY the same logic as /merchants/:merchantId/image/upload
+    const productService = new IFoodProductService(supabaseUrl, supabaseKey);
+    const imageUploadResult = await productService.uploadImage(user_id, realMerchantId, { image });
+
+    if (!imageUploadResult.success) {
+      console.error('❌ [UPLOAD IMAGE] Failed to upload image to iFood:', imageUploadResult.error);
+      return res.status(400).json({
+        success: false,
+        error: imageUploadResult.error || 'Failed to upload image to iFood'
+      });
+    }
+
+    // Extract imagePath from iFood response
+    const ifoodImagePath = imageUploadResult.data?.imagePath || imageUploadResult.data?.path || imageUploadResult.data?.url;
+
+    if (!ifoodImagePath) {
+      console.error('❌ [UPLOAD IMAGE] No image path returned from iFood API');
+      return res.status(400).json({
+        success: false,
+        error: 'iFood API did not return an image path',
+        response_data: imageUploadResult.data
+      });
+    }
+
+    console.log(`✅ [UPLOAD IMAGE] Image uploaded to iFood successfully: ${ifoodImagePath}`);
+
+    // NEW: Store the image path in our product_images table for later use
+    const { data: savedImage, error: saveError } = await supabase
+      .from('product_images')
+      .upsert({
+        product_id: productId,
+        merchant_id: realMerchantId, // Store the real merchant_id, not client_id
+        image_path: ifoodImagePath,
+        upload_status: 'uploaded'
+      }, {
+        onConflict: 'product_id,merchant_id'
+      })
+      .select()
+      .single();
+
+    if (saveError) {
+      console.error('❌ [UPLOAD IMAGE] Failed to save image path to database:', saveError);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to save image path to database',
+        ifood_upload_success: true,
+        image_path: ifoodImagePath
+      });
+    }
+
+    console.log(`💾 [UPLOAD IMAGE] Image path saved to database:`, savedImage);
+
+    // 🚀 IMMEDIATE SYNC TRIGGER: Sync product data immediately after image upload
+    setTimeout(async () => {
+      await triggerImmediateProductSync(realMerchantId, productId, user_id);
+    }, 1000); // Small delay to ensure upload is processed
+
+    return res.json({
+      success: true,
+      message: 'Image uploaded to iFood and path saved to database',
+      image_path: ifoodImagePath,
+      image_id: savedImage.id,
+      upload_status: 'uploaded',
+      real_merchant_id: realMerchantId
+    });
+
+  } catch (error: any) {
+    console.error('❌ [UPLOAD IMAGE] Unhandled Error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error'
+    });
+  }
+});
+
+// Step 2: Update Product using Stored Image Path
+app.put('/merchants/:merchantId/products/:productId', async (req, res) => {
+  try {
+    const { merchantId, productId } = req.params;
+    const { user_id, productName } = req.body;
+
+    if (!user_id) {
+      return res.status(400).json({ success: false, error: 'user_id is required' });
+    }
+
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      return res.status(500).json({ success: false, error: 'Missing Supabase configuration' });
+    }
+
+    console.log(`🔄 [UPDATE PRODUCT] Starting product update using stored image path for product ${productId}`);
+
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Get the real merchant_id from ifood_merchants table
+    const { data: merchantData, error: merchantError } = await supabase
+      .from('ifood_merchants')
+      .select('merchant_id, name')
+      .eq('user_id', user_id)
       .single();
 
     if (merchantError || !merchantData) {
@@ -2034,7 +2303,28 @@ app.put('/merchants/:merchantId/products/:productId', async (req, res) => {
     const realMerchantId = merchantData.merchant_id;
     console.log(`🏪 [UPDATE PRODUCT] Using real merchant_id: ${realMerchantId} (${merchantData.name})`);
 
-    // STEP 2: Buscar dados atuais do produto no banco de dados local
+    // STEP 1: Get stored image path from product_images table using real merchant_id
+    const { data: storedImage, error: imageError } = await supabase
+      .from('product_images')
+      .select('image_path')
+      .eq('product_id', productId)
+      .eq('merchant_id', realMerchantId) // Use real merchant_id, not client_id
+      .eq('upload_status', 'uploaded')
+      .single();
+
+    if (imageError || !storedImage) {
+      console.error('❌ [UPDATE PRODUCT] No stored image found for this product:', imageError);
+      return res.status(404).json({
+        success: false,
+        error: 'No uploaded image found for this product. Please upload an image first using POST /merchants/:merchantId/products/:productId/upload-image',
+        suggestion: 'Use the upload-image endpoint first to upload and store the image path'
+      });
+    }
+
+    const imagePath = storedImage.image_path;
+    console.log(`📸 [UPDATE PRODUCT] Found stored image path: ${imagePath}`);
+
+    // STEP 2: Get product data from local database
     let { data: existingProduct, error: fetchError } = await supabase
       .from('products')
       .select('*')
@@ -2075,9 +2365,7 @@ app.put('/merchants/:merchantId/products/:productId', async (req, res) => {
 
           // Product found after sync, continue with the update
           console.log('✅ [AUTO-SYNC] Product found after sync:', syncedProduct.name);
-          // Update existingProduct variable to use the synced data
           existingProduct = syncedProduct;
-
         } else {
           console.error('❌ [AUTO-SYNC] Failed to sync products from iFood:', syncResult.error);
           return res.status(404).json({
@@ -2098,86 +2386,356 @@ app.put('/merchants/:merchantId/products/:productId', async (req, res) => {
 
     console.log('📦 [UPDATE PRODUCT] Found existing product:', existingProduct.name);
 
-    // STEP 3: Upload image to iFood first and get the image path response
-    console.log('📸 [UPDATE PRODUCT] Step 1: Uploading image to iFood...');
-    const productService = new IFoodProductService(supabaseUrl, supabaseKey);
-    const imageUploadResult = await productService.uploadImage(user_id, realMerchantId, { image });
+    // STEP 3: Update product in iFood using stored image path
+    console.log('🔄 [UPDATE PRODUCT] Updating product in iFood with stored image path...');
 
-    if (!imageUploadResult.success) {
-      console.error('❌ [UPDATE PRODUCT] Failed to upload image to iFood:', imageUploadResult.error);
-      return res.status(400).json({
-        success: false,
-        error: imageUploadResult.error || 'Failed to upload image to iFood'
-      });
-    }
-
-    console.log('✅ [UPDATE PRODUCT] Image uploaded successfully to iFood');
-    console.log('📸 [UPDATE PRODUCT] Image upload response:', imageUploadResult.data);
-
-    // Extract imagePath from iFood response
-    const ifoodImagePath = imageUploadResult.data?.imagePath || imageUploadResult.data?.path || imageUploadResult.data?.url;
-
-    if (!ifoodImagePath) {
-      console.error('❌ [UPDATE PRODUCT] No image path returned from iFood API');
-      return res.status(400).json({
-        success: false,
-        error: 'iFood API did not return an image path',
-        response_data: imageUploadResult.data
-      });
-    }
-
-    console.log(`📸 [UPDATE PRODUCT] Got image path from iFood: ${ifoodImagePath}`);
-
-    // STEP 4: Use the returned image path to update the product
-    console.log('🔄 [UPDATE PRODUCT] Step 2: Updating product with iFood image path...');
-    const itemData = {
-      item: {
-        id: existingProduct.item_id, // SKU
-        productId: existingProduct.product_id, // UUID
-        status: existingProduct.is_active ? 'AVAILABLE' : 'UNAVAILABLE',
-        price: {
-          value: existingProduct.price || 0,
-          originalValue: existingProduct.original_price || undefined
-        },
-        categoryId: existingProduct.ifood_category_id
-      },
-      products: [
-        {
-          id: existingProduct.product_id, // UUID
-          name: productName || existingProduct.name,
-          description: existingProduct.description || '',
-          imagePath: ifoodImagePath // Use the image path returned from iFood
-        }
-      ]
+    // Prepare the product data with the stored image path - exactly as iFood expects
+    const productUpdateData = {
+      name: productName || existingProduct.name,
+      description: existingProduct.description || '',
+      serving: existingProduct.serving || 'SERVES_1',
+      externalCode: existingProduct.external_code || existingProduct.item_id,
+      imagePath: imagePath // Use the stored image path from our database
     };
 
-    // Update the product in iFood with the new image path
-    const ifoodResult = await productService.createOrUpdateItem(user_id, realMerchantId, itemData);
+    console.log('📸 [UPDATE PRODUCT] Sending product data to iFood:', productUpdateData);
 
-    if (!ifoodResult.success) {
-      console.error('❌ [UPDATE PRODUCT] iFood API error during product update:', ifoodResult.error);
-      return res.status(400).json({
+    // Make direct PUT request to iFood API (same format as your curl example)
+    const tokenData = await getTokenForUser(user_id);
+    if (!tokenData?.access_token) {
+      return res.status(401).json({
         success: false,
-        error: ifoodResult.error || 'Failed to update product in iFood',
-        image_upload_success: true,
-        image_path: ifoodImagePath
+        error: 'No valid token found for user'
       });
     }
 
-    console.log(`✅ [UPDATE PRODUCT] Two-step workflow completed successfully for product ${productId}`);
+    const ifoodResponse = await fetch(`https://merchant-api.ifood.com.br/catalog/v2.0/merchants/${realMerchantId}/products/${productId}`, {
+      method: 'PUT',
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${tokenData.access_token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(productUpdateData)
+    });
+
+    if (!ifoodResponse.ok) {
+      const errorData = await ifoodResponse.text();
+      console.error('❌ [UPDATE PRODUCT] iFood API error:', {
+        status: ifoodResponse.status,
+        statusText: ifoodResponse.statusText,
+        body: errorData
+      });
+      return res.status(ifoodResponse.status).json({
+        success: false,
+        error: `iFood API error: ${ifoodResponse.statusText}`,
+        details: errorData,
+        stored_image_path: imagePath
+      });
+    }
+
+    // Parse the response from iFood API
+    let ifoodResult = {};
+    try {
+      ifoodResult = await ifoodResponse.json();
+    } catch (jsonError) {
+      // If response is not JSON, use text
+      ifoodResult = { message: await ifoodResponse.text() };
+    }
+
+    console.log('✅ [UPDATE PRODUCT] Product updated successfully in iFood:', ifoodResult);
+
+    // STEP 4: Update image status to 'applied'
+    await supabase
+      .from('product_images')
+      .update({ upload_status: 'applied', updated_at: new Date().toISOString() })
+      .eq('product_id', productId)
+      .eq('merchant_id', realMerchantId);
+
+    console.log(`✅ [UPDATE PRODUCT] Product update completed successfully using stored image path`);
+
+    // 🚀 IMMEDIATE SYNC TRIGGER: Sync product data immediately after product edit
+    setTimeout(async () => {
+      await triggerImmediateProductSync(realMerchantId, productId, user_id);
+    }, 1000); // Small delay to ensure update is processed
 
     return res.json({
       success: true,
-      message: 'Product updated successfully with new image',
-      workflow: 'two-step-completed',
-      image_uploaded: true,
-      image_path: ifoodImagePath,
+      message: 'Product updated successfully using stored image path',
+      workflow: 'database-image-path',
+      image_path: imagePath,
       product_updated: true,
-      data: ifoodResult.data
+      data: ifoodResult
     });
 
   } catch (error: any) {
     console.error('❌ [UPDATE PRODUCT] Unhandled Error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error'
+    });
+  }
+});
+
+// Get Product Images for a Merchant
+app.get('/merchants/:merchantId/product-images', async (req, res) => {
+  try {
+    const { merchantId } = req.params;
+    const { user_id } = req.query;
+
+    if (!user_id) {
+      return res.status(400).json({ success: false, error: 'user_id is required' });
+    }
+
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      return res.status(500).json({ success: false, error: 'Missing Supabase configuration' });
+    }
+
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Get the real merchant_id from ifood_merchants table
+    const { data: merchantData, error: merchantError } = await supabase
+      .from('ifood_merchants')
+      .select('merchant_id, name')
+      .eq('user_id', user_id)
+      .single();
+
+    if (merchantError || !merchantData) {
+      console.error('❌ [PRODUCT IMAGES] Merchant not found for user:', user_id);
+      return res.status(404).json({
+        success: false,
+        error: 'Merchant not found for this user'
+      });
+    }
+
+    const realMerchantId = merchantData.merchant_id;
+    console.log(`🖼️ [PRODUCT IMAGES] Fetching images for merchant: ${realMerchantId}`);
+
+    // Get all product images for this merchant
+    const { data: productImages, error: imagesError } = await supabase
+      .from('product_images')
+      .select('product_id, image_path, image_url, upload_status, created_at')
+      .eq('merchant_id', realMerchantId)
+      .in('upload_status', ['uploaded', 'applied', 'synced']);
+
+    if (imagesError) {
+      console.error('❌ [PRODUCT IMAGES] Error fetching images:', imagesError);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch product images'
+      });
+    }
+
+    console.log(`✅ [PRODUCT IMAGES] Found ${productImages?.length || 0} product images`);
+
+    // Convert to a map for easy lookup by product_id
+    const imageMap = {};
+    productImages?.forEach(img => {
+      // Use image_url if available, otherwise construct from image_path
+      const fullUrl = img.image_url || `https://static-images.ifood.com.br/image/upload/${img.image_path}`;
+
+      imageMap[img.product_id] = {
+        image_path: img.image_path,
+        image_url: img.image_url || null,
+        full_url: fullUrl,
+        upload_status: img.upload_status,
+        created_at: img.created_at
+      };
+    });
+
+    return res.json({
+      success: true,
+      images: imageMap,
+      total: productImages?.length || 0
+    });
+
+  } catch (error: any) {
+    console.error('❌ [PRODUCT IMAGES] Unhandled Error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error'
+    });
+  }
+});
+
+// Get Single Product from iFood Catalog API and Store Image URL
+app.get('/merchants/:merchantId/products/:productId', async (req, res) => {
+  try {
+    const { merchantId, productId } = req.params;
+    const { user_id } = req.query;
+
+    console.log(`🔍 [GET PRODUCT] Fetching product ${productId} for merchant ${merchantId}`);
+
+    if (!user_id) {
+      return res.status(400).json({ success: false, error: 'user_id is required' });
+    }
+
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      return res.status(500).json({ success: false, error: 'Missing Supabase configuration' });
+    }
+
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Get the real merchant_id from ifood_merchants table
+    const { data: merchantData, error: merchantError } = await supabase
+      .from('ifood_merchants')
+      .select('merchant_id, name')
+      .eq('user_id', user_id)
+      .single();
+
+    if (merchantError || !merchantData) {
+      console.error('❌ [GET PRODUCT] Merchant not found for user:', user_id);
+      return res.status(404).json({
+        success: false,
+        error: 'Merchant not found for this user'
+      });
+    }
+
+    const realMerchantId = merchantData.merchant_id;
+    console.log(`🏪 [GET PRODUCT] Using real merchant_id: ${realMerchantId}`);
+
+    // Get token for iFood API
+    const { data: tokens, error: tokenError } = await supabase
+      .from('ifood_tokens')
+      .select('access_token, expires_at, client_id, user_id')
+      .order('created_at', { ascending: false });
+
+    if (tokenError || !tokens?.length) {
+      console.error('❌ [GET PRODUCT] No tokens found:', tokenError);
+      return res.status(401).json({
+        success: false,
+        error: 'No valid token found for user'
+      });
+    }
+
+    const tokenData = tokens[0];
+    console.log(`🔑 [GET PRODUCT] Using token for client: ${tokenData.client_id}`);
+
+    // Fetch product from iFood Catalog API
+    const ifoodResponse = await fetch(`https://merchant-api.ifood.com.br/catalog/v2.0/merchants/${realMerchantId}/products/${productId}`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${tokenData.access_token}`
+      }
+    });
+
+    if (!ifoodResponse.ok) {
+      const errorData = await ifoodResponse.text();
+      console.error('❌ [GET PRODUCT] iFood API error:', {
+        status: ifoodResponse.status,
+        statusText: ifoodResponse.statusText,
+        body: errorData
+      });
+      return res.status(ifoodResponse.status).json({
+        success: false,
+        error: `iFood API error: ${ifoodResponse.statusText}`,
+        details: errorData
+      });
+    }
+
+    const productData = await ifoodResponse.json() as any;
+    console.log(`✅ [GET PRODUCT] Product fetched from iFood:`, productData);
+
+    // Check if product has image URL and store it in database
+    if (productData.imagePath) {
+      const imageUrl = `https://static-images.ifood.com.br/image/upload/${productData.imagePath}`;
+      console.log(`🖼️ [GET PRODUCT] Found image for product: ${imageUrl}`);
+
+      try {
+        // Check if image record exists
+        const { data: existingImage, error: imageCheckError } = await supabase
+          .from('product_images')
+          .select('id, image_url')
+          .eq('product_id', productId)
+          .eq('merchant_id', realMerchantId)
+          .single();
+
+        if (imageCheckError && imageCheckError.code !== 'PGRST116') { // PGRST116 = no rows returned
+          console.error('❌ [GET PRODUCT] Error checking existing image:', imageCheckError);
+        }
+
+        if (existingImage) {
+          // Update existing record with image_url
+          const { error: updateError } = await supabase
+            .from('product_images')
+            .update({
+              image_url: imageUrl,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', existingImage.id);
+
+          if (updateError) {
+            console.error('❌ [GET PRODUCT] Error updating image_url:', updateError);
+          } else {
+            console.log(`✅ [GET PRODUCT] Updated image_url for existing record: ${existingImage.id}`);
+          }
+        } else {
+          // Create new record with both image_path and image_url
+          const { data: newImage, error: insertError } = await supabase
+            .from('product_images')
+            .insert({
+              product_id: productId,
+              merchant_id: realMerchantId,
+              image_path: productData.imagePath,
+              image_url: imageUrl,
+              upload_status: 'synced'
+            })
+            .select()
+            .single();
+
+          if (insertError) {
+            console.error('❌ [GET PRODUCT] Error inserting image record:', insertError);
+          } else {
+            console.log(`✅ [GET PRODUCT] Created new image record: ${newImage.id}`);
+          }
+        }
+
+        // Add image_url to response
+        productData.image_url = imageUrl;
+
+        // Update the products table with imagePath for frontend thumbnails
+        try {
+          const { error: updateProductError } = await supabase
+            .from('products')
+            .update({
+              imagePath: productData.imagePath,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', productId)
+            .eq('merchant_id', realMerchantId);
+
+          if (updateProductError) {
+            console.error('❌ [GET PRODUCT] Error updating products table imagePath:', updateProductError);
+          } else {
+            console.log(`✅ [GET PRODUCT] Updated products table with imagePath: ${productData.imagePath}`);
+          }
+        } catch (productUpdateError) {
+          console.error('❌ [GET PRODUCT] Error updating products table:', productUpdateError);
+        }
+
+      } catch (dbError) {
+        console.error('❌ [GET PRODUCT] Database error while handling image:', dbError);
+      }
+    }
+
+    return res.json({
+      success: true,
+      product: productData,
+      merchant_id: realMerchantId,
+      source: 'ifood_catalog_api'
+    });
+
+  } catch (error: any) {
+    console.error('❌ [GET PRODUCT] Unhandled Error:', error);
     return res.status(500).json({
       success: false,
       error: error.message || 'Internal server error'
@@ -4866,7 +5424,7 @@ app.get('/products/table', async (req, res) => {
 
     const { data: products, error } = await supabase
       .from('products')
-      .select('id, name, ean, price, status')
+      .select('id, name, ean, price, status, imagePath')
       .eq('user_id', userId)
       .eq('merchant_id', merchantId)
       .eq('status', 'AVAILABLE')
@@ -4933,6 +5491,20 @@ app.listen(PORT, () => {
     }
   }
 
+  // Auto-start product sync scheduler
+  const AUTO_START_PRODUCT_SYNC = process.env.AUTO_START_PRODUCT_SYNC !== 'false';
+  const PRODUCT_SYNC_INTERVAL = parseInt(process.env.PRODUCT_SYNC_INTERVAL || '30', 10); // Default 30 minutes
+
+  if (AUTO_START_PRODUCT_SYNC) {
+    console.log('📦 Auto-starting product sync scheduler...');
+    try {
+      productSyncScheduler.start(PRODUCT_SYNC_INTERVAL);
+      console.log('✅ Product sync scheduler started successfully');
+    } catch (error: any) {
+      console.error('❌ Failed to start product sync scheduler:', error.message);
+    }
+  }
+
   console.log('🚀 ===================================');
   console.log(`🍔 iFood Token Service Started`);
   console.log(`📡 Server running on port ${PORT}`);
@@ -4960,6 +5532,12 @@ app.listen(PORT, () => {
   console.log(`🛑 Stop log cleanup: POST http://localhost:${PORT}/logs/cleanup/scheduler/stop`);
   console.log(`📊 Cleanup status: GET http://localhost:${PORT}/logs/cleanup/scheduler/status`);
   console.log(`🧹 Manual cleanup: POST http://localhost:${PORT}/logs/cleanup/execute`);
+  console.log('📦 ===================================');
+  console.log('📦 Product Sync Scheduler Endpoints:');
+  console.log(`🚀 Start product sync: POST http://localhost:${PORT}/products/sync/scheduler/start`);
+  console.log(`🛑 Stop product sync: POST http://localhost:${PORT}/products/sync/scheduler/stop`);
+  console.log(`📊 Sync status: GET http://localhost:${PORT}/products/sync/scheduler/status`);
+  console.log(`🔄 Manual sync: POST http://localhost:${PORT}/merchants/{merchantId}/products/sync`);
   console.log('🚀 ===================================');
   console.log('📦 iFood Orders Module Endpoints:');
   console.log(`💚 Orders health: GET http://localhost:${PORT}/orders/health`);

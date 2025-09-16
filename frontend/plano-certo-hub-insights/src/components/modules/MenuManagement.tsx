@@ -108,6 +108,9 @@ export const MenuManagement = () => {
   // Estado para o modal de adicionar/editar produto
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any>(null);
+
+  // Estado para imagens dos produtos
+  const [productImages, setProductImages] = useState<Record<string, string>>({});
   
   // Estados para grupos de complementos
   const [optionGroups, setOptionGroups] = useState<any[]>([]);
@@ -142,13 +145,103 @@ export const MenuManagement = () => {
   // Usar o novo hook para buscar produtos das lojas do usuário
   const { products, groupedProducts, isLoading, error, forceRefresh, lastUpdated, isRefetching } = useUserStoreProducts();
 
+  // Função para buscar imagens dos produtos da nossa tabela product_images
+  const fetchProductImages = async (merchantId: string) => {
+    try {
+      console.log('🖼️ Iniciando busca de imagens...');
+      const userId = getCurrentUserId();
+      const imageMap: Record<string, string> = {};
+
+      // ETAPA 1: Usar imagens dos produtos que já têm imagePath
+      console.log('📋 ETAPA 1: Processando imagens dos produtos...');
+      products.forEach((product, index) => {
+        const imagePath = product.imagePath || (product as any).image_path || (product as any).imageUrl;
+
+        if (imagePath) {
+          if (imagePath.startsWith('http')) {
+            imageMap[product.id] = imagePath;
+          } else {
+            imageMap[product.id] = `https://static-images.ifood.com.br/image/upload/${imagePath}`;
+          }
+          console.log(`✅ [PRODUTO] ${product.name}: ${imageMap[product.id]}`);
+        }
+      });
+
+      // ETAPA 2: Tentar buscar da tabela product_images as imagens que não foram encontradas
+      console.log('📋 ETAPA 2: Tentando buscar da tabela product_images...');
+      try {
+        const response = await fetch(`http://localhost:8085/merchants/${merchantId}/product-images?user_id=${userId}`);
+        if (response.ok) {
+          const data = await response.json();
+          console.log('📊 Dados da tabela product_images:', data);
+
+          if (data.success && data.images) {
+            Object.entries(data.images).forEach(([productId, imageData]: [string, any]) => {
+              // Always use the image from database if available (most recent)
+              if (imageData.full_url) {
+                imageMap[productId] = imageData.full_url;
+                const product = products.find(p => p.id === productId);
+                console.log(`✅ [TABELA] ${product?.name || productId}: ${imageData.full_url}`);
+              }
+            });
+          }
+        } else {
+          console.warn(`⚠️ Erro ${response.status} ao buscar product-images:`, await response.text());
+        }
+      } catch (fetchError) {
+        console.warn('⚠️ Erro ao buscar da tabela product_images:', fetchError);
+      }
+
+      // ETAPA 3: Buscar imagens via consulta SQL direta (fallback para quando endpoint não existe)
+      console.log('📋 ETAPA 3: Tentando busca alternativa das imagens...');
+
+      if (Object.keys(imageMap).length === 0 || products.some(p => p.name === 'Espal' && !imageMap[p.id])) {
+        console.log('🔍 Tentando buscar via endpoint de produtos...');
+
+        // Vamos tentar uma abordagem diferente: usar um endpoint que sabemos que existe
+        try {
+          const response = await fetch(`http://localhost:8085/products?user_id=${userId}&with_images=true`);
+          if (response.ok) {
+            const data = await response.json();
+            console.log('📊 Dados de produtos com imagens:', data);
+          }
+        } catch (altError) {
+          console.log('⚠️ Endpoint alternativo também falhou');
+        }
+      }
+
+      products.forEach(product => {
+        if (!imageMap[product.id]) {
+          console.log(`🔍 Produto sem imagem: ${product.name} (id: ${product.id})`);
+        } else {
+          console.log(`✅ Produto com imagem: ${product.name} - ${imageMap[product.id]}`);
+        }
+      });
+
+      console.log('🖼️ Mapa final de imagens:', imageMap);
+      setProductImages(imageMap);
+
+    } catch (error) {
+      console.error('Erro ao processar imagens dos produtos:', error);
+      setProductImages({});
+    }
+  };
+
   // Buscar categorias quando merchant for selecionado
   useEffect(() => {
     if (selectedClient) {
       fetchCategories(selectedClient);
       setSelectedMerchantForCategories(selectedClient);
+      fetchProductImages(selectedClient);
     }
   }, [selectedClient]);
+
+  // Atualizar imagens quando produtos mudarem
+  useEffect(() => {
+    if (selectedClient && products.length > 0) {
+      fetchProductImages(selectedClient);
+    }
+  }, [products, selectedClient]);
 
   // Remover dados mock
   // const menuItems = [
@@ -806,7 +899,7 @@ Renove o token na página de Tokens do iFood`);
     }
   };
 
-  // Função para fazer upload rápido de imagem direto da tabela (usando novo workflow duas etapas)
+  // Função para fazer upload rápido de imagem direto da tabela (usando novo workflow duas etapas separadas)
   const handleQuickImageUpload = async (productId: string, base64Image: string) => {
     if (!selectedClient) return;
 
@@ -814,46 +907,68 @@ Renove o token na página de Tokens do iFood`);
       const userId = getCurrentUserId();
       const merchantId = selectedClient;
 
-      // Mostrar loading
-      toast.loading('📸 Fazendo upload da imagem...');
+      // ETAPA 1: Upload da imagem para iFood e armazenamento do path
+      toast.loading('📸 Fazendo upload da imagem para iFood...');
 
-      // Usar o novo endpoint PUT que faz o workflow completo de duas etapas internamente
-      // 1. Faz upload da imagem para o iFood
-      // 2. Usa o caminho retornado para atualizar o produto
+      const uploadResponse = await fetch(`http://localhost:8085/merchants/${merchantId}/products/${productId}/upload-image`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          image: base64Image
+        })
+      });
+
+      if (!uploadResponse.ok) {
+        const errorData = await uploadResponse.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Erro ao fazer upload da imagem');
+      }
+
+      const uploadResult = await uploadResponse.json();
+
+      toast.dismiss();
+      toast.loading('🔄 Atualizando produto com a imagem...');
+
+      // ETAPA 2: Atualizar o produto usando o path da imagem armazenado
       const updateResponse = await fetch(`http://localhost:8085/merchants/${merchantId}/products/${productId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          user_id: userId,
-          image: base64Image // Enviamos a imagem base64 diretamente
+          user_id: userId
+          // Não enviamos a imagem aqui, o endpoint PUT irá buscar o path armazenado
         })
       });
 
       if (!updateResponse.ok) {
         const errorData = await updateResponse.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Erro ao processar imagem');
+        throw new Error(errorData.error || 'Erro ao atualizar produto');
       }
 
-      const result = await updateResponse.json();
+      const updateResult = await updateResponse.json();
 
       toast.dismiss();
 
-      if (result.workflow === 'two-step-completed') {
-        toast.success('✅ Imagem enviada para iFood e produto atualizado!');
-        console.log('🎯 Upload completed:', {
-          image_uploaded: result.image_uploaded,
-          image_path: result.image_path,
-          product_updated: result.product_updated
+      if (updateResult.workflow === 'database-image-path') {
+        toast.success('✅ Imagem enviada para iFood e produto atualizado com sucesso!');
+        console.log('🎯 Two-step workflow completed:', {
+          step1_upload: uploadResult,
+          step2_update: updateResult,
+          image_path: updateResult.image_path
         });
       } else {
-        toast.success('Imagem adicionada com sucesso!');
+        toast.success('Processo concluído com sucesso!');
       }
 
-      // Recarregar produtos
+      // Recarregar produtos e imagens
       await forceRefresh();
-      
+      if (selectedClient) {
+        await fetchProductImages(selectedClient);
+      }
+
     } catch (error: any) {
       toast.dismiss();
       toast.error(`Erro ao fazer upload: ${error.message}`);
@@ -1126,6 +1241,7 @@ Renove o token na página de Tokens do iFood`);
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead>Imagem</TableHead>
                       <TableHead>Item</TableHead>
                       <TableHead>Categoria</TableHead>
                       <TableHead>Preço</TableHead>
@@ -1138,7 +1254,7 @@ Renove o token na página de Tokens do iFood`);
                   <TableBody>
                     {isLoading ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center py-8">
+                        <TableCell colSpan={8} className="text-center py-8">
                           <div className="flex items-center justify-center space-x-2">
                             <RefreshCw className="h-5 w-5 animate-spin" />
                             <span>Carregando produtos...</span>
@@ -1147,7 +1263,7 @@ Renove o token na página de Tokens do iFood`);
                       </TableRow>
                     ) : products.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center py-8">
+                        <TableCell colSpan={8} className="text-center py-8">
                           <Package className="h-12 w-12 mx-auto mb-4 text-gray-400" />
                           <div className="text-gray-600">Nenhum produto encontrado</div>
                           <p className="text-sm text-gray-500 mt-2">
@@ -1158,6 +1274,27 @@ Renove o token na página de Tokens do iFood`);
                     ) : (
                       products.map((product) => (
                         <TableRow key={product.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+                          <TableCell>
+                            <div className="w-12 h-12 rounded-md overflow-hidden bg-gray-100 flex items-center justify-center">
+                              {productImages[product.id] ? (
+                                <img
+                                  src={productImages[product.id]}
+                                  alt={product.name}
+                                  className="w-full h-full object-cover"
+                                  onLoad={() => {
+                                    console.log(`✅ Imagem carregada: ${product.name} - ${productImages[product.id]}`);
+                                  }}
+                                  onError={(e) => {
+                                    console.error(`❌ Erro ao carregar imagem: ${product.name} - ${productImages[product.id]}`);
+                                    const target = e.target as HTMLImageElement;
+                                    target.style.display = 'none';
+                                  }}
+                                />
+                              ) : (
+                                <Image className="h-6 w-6 text-gray-400" />
+                              )}
+                            </div>
+                          </TableCell>
                           <TableCell>
                             <div>
                               <div className="font-medium">{product.name}</div>
@@ -1304,7 +1441,7 @@ Renove o token na página de Tokens do iFood`);
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-300 hover:border-blue-400 min-w-[80px]"
+                                className="bg-white text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-300 hover:border-blue-400 min-w-[80px]"
                                 onClick={(e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
@@ -1331,8 +1468,8 @@ Renove o token na página de Tokens do iFood`);
                                 size="sm"
                                 className={
                                   isProductActive(product.is_active) 
-                                    ? "text-red-600 hover:text-red-700 hover:bg-red-50 border-red-300 hover:border-red-400" 
-                                    : "text-green-600 hover:text-green-700 hover:bg-green-50 border-green-300 hover:border-green-400"
+                                    ? "bg-white text-red-600 hover:text-red-700 hover:bg-red-50 border-red-300 hover:border-red-400"
+                                    : "bg-white text-green-600 hover:text-green-700 hover:bg-green-50 border-green-300 hover:border-green-400"
                                 }
                                 onClick={() => {
                                   const newStatus = isProductActive(product.is_active) ? 'UNAVAILABLE' : 'AVAILABLE';
@@ -1349,7 +1486,7 @@ Renove o token na página de Tokens do iFood`);
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-300 hover:border-blue-400"
+                                className="bg-white text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-300 hover:border-blue-400"
                                 onClick={() => {
                                   openPriceModal(product.item_id, product.name, product.price?.toString() || '0');
                                 }}
