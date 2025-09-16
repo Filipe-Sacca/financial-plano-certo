@@ -299,7 +299,7 @@ export class IFoodProductService {
           // Verificar se produto já existe
           const { data: existingProduct } = await this.supabase
             .from('products')
-            .select('id, is_active, price, name')
+            .select('id, is_active, price, name, imagePath')
             .eq('item_id', product.item_id)
             .eq('merchant_id', merchantId)
             .single();

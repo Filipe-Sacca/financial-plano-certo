@@ -420,12 +420,39 @@ export class IFoodMerchantStatusService {
 
       console.log(`✅ iFood API response: ${response.status}`);
 
-      // 6. Update our database with new hours (will be updated in next polling cycle)
-      // For now, just return success
-      return {
-        success: true,
-        message: `Opening hours updated successfully for ${dayOfWeek}. Changes will be reflected in next polling cycle.`
-      };
+      // 6. Update our database immediately with new hours
+      try {
+        const { error: updateError } = await supabase
+          .from('ifood_merchants')
+          .update({
+            operating_hours: {
+              shifts: existingShifts
+            },
+            updated_at: new Date().toISOString()
+          })
+          .eq('merchant_id', merchantId);
+
+        if (updateError) {
+          console.error(`⚠️ Warning: Failed to update local database:`, updateError);
+          return {
+            success: true,
+            message: `Opening hours updated successfully in iFood for ${dayOfWeek}, but local database update failed. Changes will be reflected in next polling cycle.`
+          };
+        }
+
+        console.log(`✅ Local database updated successfully for ${dayOfWeek}`);
+        return {
+          success: true,
+          message: `Opening hours updated successfully for ${dayOfWeek} in both iFood and local database.`
+        };
+
+      } catch (dbError) {
+        console.error(`⚠️ Warning: Database update failed:`, dbError);
+        return {
+          success: true,
+          message: `Opening hours updated successfully in iFood for ${dayOfWeek}, but local database update failed. Changes will be reflected in next polling cycle.`
+        };
+      }
 
     } catch (error: any) {
       console.error(`❌ Error updating opening hours:`, error.response?.data || error.message);
