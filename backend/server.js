@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const cors = require('cors');
 const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
@@ -10,6 +11,11 @@ const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+// Middleware de configuração
+app.use(cors({
+  origin: ['http://localhost:5000', 'http://localhost:3000', 'http://localhost:6000'],
+  credentials: true
+}));
 app.use(express.json());
 
 // Middleware para logging
@@ -17,6 +23,12 @@ app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
   next();
 });
+
+// Importar rotas
+const financialRoutes = require('./src/routes/financial');
+
+// Registrar rotas
+app.use('/api/financial', financialRoutes);
 
 // Rota de teste de saúde
 app.get('/health', (req, res) => {
@@ -92,6 +104,17 @@ Endpoints disponíveis:
 - GET /health - Status do servidor
 - GET /test-supabase - Testar conexão
 - GET /tables - Listar tabelas
+
+Endpoints Financeiros:
+- GET /api/financial/settlements - Assentamentos financeiros
+- GET /api/financial/events - Eventos financeiros
+- GET /api/financial/sales - Vendas (últimos 7 dias)
+- GET /api/financial/anticipations - Antecipações
+- GET /api/financial/reconciliation - Reconciliação
+- POST /api/financial/reconciliation/on-demand - Solicitar reconciliação
+- GET /api/financial/reconciliation/on-demand/:id - Status da reconciliação
+- GET /api/financial/summary - Resumo financeiro
+- GET /api/financial/health - Status da integração
 `);
 });
 

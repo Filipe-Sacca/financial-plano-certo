@@ -1,77 +1,37 @@
-
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Sidebar } from '@/components/Sidebar';
 import { Header } from '@/components/Header';
-import { MenuManagement } from '@/components/modules/MenuManagement';
-import { IfoodApiConfig } from '@/components/modules/IfoodApiConfig';
-import IfoodOrdersManager from '@/components/modules/IfoodOrdersManager';
-import IfoodReviewsManager from '@/components/modules/IfoodReviewsManager';
-import { IfoodShippingManager } from '@/components/modules/IfoodShippingManager';
-import { StoreMonitoring } from '@/components/modules/StoreMonitoring';
-import OpeningHoursManager from '@/components/modules/OpeningHoursManager';
 import { DateRange } from 'react-day-picker';
 import { format, subDays } from 'date-fns';
 import { useAuth } from '@/App';
-import { useIntegrationCheck } from '@/hooks/useIntegrationCheck';
 import { toast } from '@/components/ui/use-toast';
+
+// Financial components
+import { FinancialDashboard } from '@/components/financial/FinancialDashboard';
+import { SettlementsPanel } from '@/components/financial/SettlementsPanel';
+import { EventsPanel } from '@/components/financial/EventsPanel';
+import { SalesPanel } from '@/components/financial/SalesPanel';
+import { ReconciliationPanel } from '@/components/financial/ReconciliationPanel';
+
+// iFood components
+import { IfoodApiConfig } from '@/components/modules/IfoodApiConfig';
+import OpeningHoursManager from '@/components/modules/merchants/OpeningHoursManager';
 
 export default function Index() {
   const { user } = useAuth();
   const location = useLocation();
-  const [activeModule, setActiveModule] = useState('menu-management');
+  const [activeModule, setActiveModule] = useState('financial-dashboard');
   const [selectedClient, setSelectedClient] = useState('all');
   const [selectedPeriod, setSelectedPeriod] = useState('30d');
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
-  const [highlightOrder, setHighlightOrder] = useState<string | null>(null);
-  
-  // Verificar integrações ativas do usuário
-  const { data: integrationStatus, isLoading: isCheckingIntegration } = useIntegrationCheck(user?.id);
 
-  // Handle navigation from Orders to Shipping
-  useEffect(() => {
-    if (location.state?.activeModule === 'shipping') {
-      setActiveModule('ifood-shipping');
-      if (location.state?.highlightOrder) {
-        setHighlightOrder(location.state.highlightOrder);
-      }
-      // Clear navigation state
-      window.history.replaceState({}, document.title);
-    }
-  }, [location]);
-
-  // Mostrar notificações sobre o status das integrações
-  useEffect(() => {
-    if (integrationStatus && !isCheckingIntegration) {
-      if (integrationStatus.hasIfoodIntegration) {
-        // Verificar se o token não expirou
-        if (integrationStatus.ifoodToken?.expires_at) {
-          toast({
-            title: '✅ Integração iFood ativa',
-            description: 'Sua integração com o iFood está funcionando normalmente.',
-          });
-        } else {
-          toast({
-            title: '✅ Integração iFood ativa',
-            description: 'Sua integração com o iFood está funcionando normalmente.',
-          });
-        }
-      } else {
-        toast({
-          title: '🔗 Configure suas integrações',
-          description: 'Configure a integração com o iFood para aproveitar todos os recursos.',
-          variant: 'default',
-        });
-      }
-    }
-  }, [integrationStatus, isCheckingIntegration]);
-
-  // Calcular o range de datas baseado no período selecionado
-  const calculatedDateRange = useMemo(() => {
-    if (selectedPeriod === 'custom' && dateRange) {
+  // Calculate date range based on selected period
+  const dateRangeFilter = useMemo(() => {
+    if (dateRange?.from && dateRange?.to) {
       return {
-        start: format(dateRange.from!, 'yyyy-MM-dd'),
-        end: format(dateRange.to || dateRange.from!, 'yyyy-MM-dd')
+        start: format(dateRange.from, 'yyyy-MM-dd'),
+        end: format(dateRange.to, 'yyyy-MM-dd')
       };
     }
 
@@ -79,14 +39,17 @@ export default function Index() {
     let startDate: Date;
 
     switch (selectedPeriod) {
-      case '1d':
-        startDate = today;
-        break;
       case '7d':
         startDate = subDays(today, 7);
         break;
+      case '15d':
+        startDate = subDays(today, 15);
+        break;
       case '30d':
         startDate = subDays(today, 30);
+        break;
+      case '60d':
+        startDate = subDays(today, 60);
         break;
       case '90d':
         startDate = subDays(today, 90);
@@ -108,42 +71,50 @@ export default function Index() {
   }, [selectedPeriod, dateRange]);
 
   const renderModule = () => {
+    // Mock merchantId for now - should come from user context
+    const merchantId = user?.id || 'default-merchant';
+
     switch (activeModule) {
-      case 'menu-management':
-        return <MenuManagement />;
-      case 'ifood-api':
-        return <IfoodApiConfig />;
-      case 'ifood-orders':
-        return <IfoodOrdersManager />;
-      case 'ifood-reviews':
-        return integrationStatus?.ifoodMerchant?.merchant_id && user?.id ? (
-          <IfoodReviewsManager 
-            merchantId={integrationStatus.ifoodMerchant.merchant_id} 
-            userId={user.id} 
-          />
-        ) : (
-          <div className="flex items-center justify-center h-full">
-            <p className="text-muted-foreground">Configure a integração com o iFood para visualizar avaliações</p>
+      case 'financial-dashboard':
+        return <FinancialDashboard />;
+      case 'settlements':
+        return (
+          <div className="container mx-auto p-6 mt-8">
+            <SettlementsPanel merchantId={merchantId} />
           </div>
         );
-      case 'ifood-shipping':
-        return integrationStatus?.ifoodMerchant?.merchant_id && user?.id ? (
-          <IfoodShippingManager 
-            merchantId={integrationStatus.ifoodMerchant.merchant_id}
-            highlightOrder={highlightOrder} 
-            userId={user.id} 
-          />
-        ) : (
-          <div className="flex items-center justify-center h-full">
-            <p className="text-muted-foreground">Configure a integração com o iFood para gerenciar entregas</p>
+      case 'events':
+        return (
+          <div className="container mx-auto p-6 mt-8">
+            <EventsPanel merchantId={merchantId} />
           </div>
         );
-      case 'store-monitoring':
-        return <StoreMonitoring />;
+      case 'sales':
+        return (
+          <div className="container mx-auto p-6 mt-8">
+            <SalesPanel merchantId={merchantId} />
+          </div>
+        );
+      case 'reconciliation':
+        return (
+          <div className="container mx-auto p-6 mt-8">
+            <ReconciliationPanel merchantId={merchantId} />
+          </div>
+        );
+      case 'ifood-sync':
+        return (
+          <div className="container mx-auto p-6 mt-8">
+            <IfoodApiConfig />
+          </div>
+        );
       case 'opening-hours':
-        return <OpeningHoursManager />;
+        return (
+          <div className="container mx-auto p-6 mt-8">
+            <OpeningHoursManager />
+          </div>
+        );
       default:
-        return <MenuManagement />;
+        return <FinancialDashboard />;
     }
   };
 
@@ -151,7 +122,7 @@ export default function Index() {
     <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
       <Sidebar activeModule={activeModule} onModuleChange={setActiveModule} />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Header 
+        <Header
           onMenuClick={() => {}}
           isMobile={false}
           selectedClient={selectedClient}

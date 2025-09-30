@@ -4,7 +4,7 @@ import { DatePickerWithRange } from '@/components/ui/date-picker';
 import { DateRange } from 'react-day-picker';
 import { Calendar, Users, Store } from 'lucide-react';
 import { useClients } from '@/hooks/useClients';
-import { useIfoodMerchants } from '@/hooks/useIfoodMerchants';
+import { useIfoodMerchants } from '@/hooks/merchants/useIfoodMerchants';
 import { useAuth } from '@/App';
 
 interface FilterBarProps {

@@ -32,7 +32,7 @@ import {
   Clock
 } from 'lucide-react';
 import { useAuth } from '@/App';
-import { useIfoodMerchants } from '@/hooks/useIfoodMerchants';
+import { useIfoodMerchants } from '@/hooks/merchants/useIfoodMerchants';
 import { useIntegrationCheck } from '@/hooks/useIntegrationCheck';
 import { useUserStoreProducts, useUserProductsStats } from '@/hooks/useUserStoreProducts';
 import { useUserPausedProducts, useUserPausedProductsStats } from '@/hooks/useUserPausedProducts';

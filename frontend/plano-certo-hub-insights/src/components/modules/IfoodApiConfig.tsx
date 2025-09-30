@@ -40,8 +40,8 @@ import {
 import { useForm } from 'react-hook-form';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useIfoodConfig } from '@/hooks/useIfoodConfig';
-import { useIfoodMerchants } from '@/hooks/useIfoodMerchants';
-import { syncMerchants, getMerchantDetail, syncAllMerchants } from '@/services/ifoodMerchantsService';
+import { useIfoodMerchants } from '@/hooks/merchants/useIfoodMerchants';
+import { syncMerchants, getMerchantDetail, syncAllMerchants } from '@/services/merchants/ifoodMerchantsService';
 
 
 interface ApiConfig {
@@ -156,7 +156,7 @@ export const IfoodApiConfig = () => {
       });
       
       // Connect to local Node.js service only
-      const response = await fetch('http://localhost:8082/token', {
+      const response = await fetch('http://localhost:6000/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)

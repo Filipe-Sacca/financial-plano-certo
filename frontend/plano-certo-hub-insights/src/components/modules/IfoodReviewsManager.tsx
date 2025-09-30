@@ -79,7 +79,7 @@ const IfoodReviewsManager: React.FC<Props> = ({ merchantId, userId }) => {
   const [page, setPage] = useState(1);
   const [pageSize] = useState(20);
 
-  const API_BASE_URL = 'http://localhost:8085';
+  const API_BASE_URL = 'http://localhost:6000';
 
   useEffect(() => {
     loadReviews();

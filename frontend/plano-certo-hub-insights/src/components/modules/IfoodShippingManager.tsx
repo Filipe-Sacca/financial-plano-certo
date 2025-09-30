@@ -137,7 +137,7 @@ export function IfoodShippingManager({
   // Load active shipments (only those with delivery person assigned)
   const loadActiveShipments = useCallback(async () => {
     try {
-      const response = await fetch(`http://localhost:8085/shipping/active?merchantId=${merchantId}&hasDriver=true`);
+      const response = await fetch(`http://localhost:6000/shipping/active?merchantId=${merchantId}&hasDriver=true`);
       const result = await response.json();
       
       if (result.success) {
@@ -158,7 +158,7 @@ export function IfoodShippingManager({
   // Load pending address changes
   const loadPendingAddressChanges = useCallback(async () => {
     try {
-      const response = await fetch(`http://localhost:8085/shipping/address-changes/pending?merchantId=${merchantId}`);
+      const response = await fetch(`http://localhost:6000/shipping/address-changes/pending?merchantId=${merchantId}`);
       const result = await response.json();
       
       if (result.success) {
@@ -175,7 +175,7 @@ export function IfoodShippingManager({
   const startPolling = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('http://localhost:8085/shipping/polling/start', {
+      const response = await fetch('http://localhost:6000/shipping/polling/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ merchantId, userId })
@@ -216,7 +216,7 @@ export function IfoodShippingManager({
   const stopPolling = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('http://localhost:8085/shipping/polling/stop', {
+      const response = await fetch('http://localhost:6000/shipping/polling/stop', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ merchantId, userId })
@@ -254,8 +254,8 @@ export function IfoodShippingManager({
     setIsLoading(true);
     try {
       const endpoint = shipment.orderId 
-        ? `http://localhost:8085/shipping/orders/${shipment.orderId}/status`
-        : `http://localhost:8085/shipping/external/${shipment.externalId}/status`;
+        ? `http://localhost:6000/shipping/orders/${shipment.orderId}/status`
+        : `http://localhost:6000/shipping/external/${shipment.externalId}/status`;
         
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -299,7 +299,7 @@ export function IfoodShippingManager({
   const respondToAddressChange = async (change: AddressChange) => {
     setIsLoading(true);
     try {
-      const response = await fetch(`http://localhost:8085/shipping/address-change/${change.eventId}/response`, {
+      const response = await fetch(`http://localhost:6000/shipping/address-change/${change.eventId}/response`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -347,7 +347,7 @@ export function IfoodShippingManager({
         ...(shipment.orderId ? { orderId: shipment.orderId } : { externalId: shipment.externalId! })
       });
       
-      const response = await fetch(`http://localhost:8085/shipping/safe-delivery/score?${params}`);
+      const response = await fetch(`http://localhost:6000/shipping/safe-delivery/score?${params}`);
       const result = await response.json();
       
       if (result.success) {
@@ -384,7 +384,7 @@ export function IfoodShippingManager({
         ...(shipment.orderId ? { orderId: shipment.orderId } : { externalId: shipment.externalId! })
       });
       
-      const response = await fetch(`http://localhost:8085/shipping/tracking?${params}`);
+      const response = await fetch(`http://localhost:6000/shipping/tracking?${params}`);
       const result = await response.json();
       
       if (result.success && result.data.trackingUrl) {

@@ -7,7 +7,7 @@ import { DateRange } from 'react-day-picker';
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { useClients } from '@/hooks/useClients';
-import { useIfoodMerchants } from '@/hooks/useIfoodMerchants';
+import { useIfoodMerchants } from '@/hooks/merchants/useIfoodMerchants';
 import { useAuth } from '@/App';
 import { supabase } from '@/integrations/supabase/client';
 import {

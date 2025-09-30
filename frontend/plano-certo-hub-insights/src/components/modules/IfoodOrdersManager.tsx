@@ -118,7 +118,7 @@ const IfoodOrdersManager: React.FC = () => {
     { value: 'PAYMENT_ISSUE', label: 'Problema com pagamento do cliente' },
   ];
 
-  const API_BASE = 'http://localhost:8085';
+  const API_BASE = 'http://localhost:6000';
 
   // Fetch polling status
   const fetchPollingStatus = async () => {
