@@ -654,7 +654,7 @@ app.put('/merchants/:merchantId/opening-hours', async (req, res) => {
     const response = await fetch(`https://merchant-api.ifood.com.br/merchant/v1.0/merchants/${merchantId}/opening-hours`, {
       method: 'PUT',
       headers: {
-        'Authorization': `Bearer ${token}`,
+        'Authorization': `Bearer ${token.access_token}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(opening_hours)
@@ -718,7 +718,7 @@ app.delete('/merchants/:merchantId/opening-hours/delete', async (req, res) => {
     const response = await fetch(`https://merchant-api.ifood.com.br/merchant/v1.0/merchants/${merchantId}/opening-hours`, {
       method: 'DELETE',
       headers: {
-        'Authorization': `Bearer ${token}`,
+        'Authorization': `Bearer ${token.access_token}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({ dayOfWeek })
@@ -763,7 +763,7 @@ app.post('/merchants/:merchantId/interruptions', async (req, res) => {
     const response = await fetch(`https://merchant-api.ifood.com.br/merchant/v1.0/merchants/${merchantId}/interruptions`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${token}`,
+        'Authorization': `Bearer ${token.access_token}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(interruption)
@@ -815,7 +815,7 @@ app.get('/merchants/:merchantId/interruptions', async (req, res) => {
     // Get interruptions from iFood API
     const response = await fetch(`https://merchant-api.ifood.com.br/merchant/v1.0/merchants/${merchantId}/interruptions`, {
       headers: {
-        'Authorization': `Bearer ${token}`,
+        'Authorization': `Bearer ${token.access_token}`,
         'Content-Type': 'application/json'
       }
     });
@@ -863,7 +863,7 @@ app.post('/merchants/:merchantId/interruptions/sync', async (req, res) => {
     // Get interruptions from iFood API
     const response = await fetch(`https://merchant-api.ifood.com.br/merchant/v1.0/merchants/${merchantId}/interruptions`, {
       headers: {
-        'Authorization': `Bearer ${token}`,
+        'Authorization': `Bearer ${token.access_token}`,
         'Content-Type': 'application/json'
       }
     });
@@ -913,7 +913,7 @@ app.delete('/merchants/:merchantId/interruptions/:interruptionId', async (req, r
     const response = await fetch(`https://merchant-api.ifood.com.br/merchant/v1.0/merchants/${merchantId}/interruptions/${interruptionId}`, {
       method: 'DELETE',
       headers: {
-        'Authorization': `Bearer ${token}`,
+        'Authorization': `Bearer ${token.access_token}`,
         'Content-Type': 'application/json'
       }
     });

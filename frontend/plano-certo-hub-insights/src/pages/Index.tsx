@@ -13,6 +13,7 @@ import { SettlementsPanel } from '@/components/financial/SettlementsPanel';
 import { EventsPanel } from '@/components/financial/EventsPanel';
 import { SalesPanel } from '@/components/financial/SalesPanel';
 import { ReconciliationPanel } from '@/components/financial/ReconciliationPanel';
+import { AnticipationsPanel } from '@/components/financial/AnticipationsPanel';
 
 // iFood components
 import { IfoodApiConfig } from '@/components/modules/IfoodApiConfig';
@@ -99,6 +100,12 @@ export default function Index() {
         return (
           <div className="container mx-auto p-6 mt-8">
             <ReconciliationPanel merchantId={merchantId} />
+          </div>
+        );
+      case 'anticipations':
+        return (
+          <div className="container mx-auto p-6 mt-8">
+            <AnticipationsPanel merchantId={merchantId} />
           </div>
         );
       case 'ifood-sync':

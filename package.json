@@ -5,7 +5,6 @@
   "main": "run.py",
   "scripts": {
     "start": "python run.py --status",
-    "sync": "python run.py --sync",
     "token-check": "node scripts-utils/test-expiration-check.js",
     "token-monitor": "node scripts-utils/monitor-token-updates.js",
     "dev:frontend": "cd frontend/plano-certo-hub-insights && npm run dev",

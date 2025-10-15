@@ -117,6 +117,49 @@ export function ReconciliationPanel({ merchantId }: ReconciliationPanelProps) {
     }
   };
 
+  const handleDownloadReconciliation = (downloadUrl: string, competence: string) => {
+    if (!downloadUrl) {
+      toast({
+        title: 'Erro',
+        description: 'URL de download não disponível',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      // Criar link temporário e fazer download
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.setAttribute('download', `reconciliation_${competence}.csv`);
+      link.setAttribute('target', '_blank');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      toast({
+        title: 'Download iniciado',
+        description: 'O arquivo de reconciliação está sendo baixado',
+      });
+    } catch (error) {
+      console.error('Erro ao fazer download:', error);
+      toast({
+        title: 'Erro no download',
+        description: 'Não foi possível baixar o arquivo',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleDownloadOnDemand = () => {
+    if (statusData?.data?.download_url) {
+      handleDownloadReconciliation(
+        statusData.data.download_url,
+        activeRequestId
+      );
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     const statusConfig = {
       COMPLETED: {
@@ -248,7 +291,7 @@ export function ReconciliationPanel({ merchantId }: ReconciliationPanelProps) {
               {getStatusBadge(statusData.data.status || 'PROCESSING')}
             </span>
             {statusData.data.status === 'COMPLETED' && (
-              <Button variant="link" size="sm">
+              <Button variant="link" size="sm" onClick={handleDownloadOnDemand}>
                 <Download className="h-4 w-4 mr-2" />
                 Baixar Relatório
               </Button>
@@ -325,7 +368,16 @@ export function ReconciliationPanel({ merchantId }: ReconciliationPanelProps) {
                       {item.download_path}
                     </TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="sm">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          handleDownloadReconciliation(
+                            item.download_path,
+                            item.competence
+                          )
+                        }
+                      >
                         <Download className="h-4 w-4 mr-2" />
                         Baixar
                       </Button>

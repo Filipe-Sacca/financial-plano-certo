@@ -1,35 +1,44 @@
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const { createClient } = require('@supabase/supabase-js');
+import 'dotenv/config';
+import express, { Request, Response, NextFunction } from 'express';
+import cors from 'cors';
+import { createClient } from '@supabase/supabase-js';
 
 const app = express();
 const port = process.env.PORT || 3000;
 
 // Configurar Supabase
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_ANON_KEY;
+const supabaseUrl = process.env.SUPABASE_URL!;
+const supabaseKey = process.env.SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Middleware de configuração
 app.use(cors({
-  origin: ['http://localhost:5000', 'http://localhost:3000', 'http://localhost:6000'],
+  origin: [
+    'http://localhost:5000',
+    'http://localhost:3000',
+    'http://localhost:6000',
+    'http://5.161.109.157:5000',
+    'http://5.161.109.157:3000'
+  ],
   credentials: true
 }));
 app.use(express.json());
 
 // Middleware para logging
-app.use((req, res, next) => {
+app.use((req: Request, res: Response, next: NextFunction) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
   next();
 });
 
 // Importar rotas
-const financialRoutes = require('./src/routes/financial');
-const merchantRoutes = require('./src/routes/merchantRoutes');
-const qrcodeRoutes = require('./src/routes/qrcodeRoutes');
-const openingHoursRoutes = require('./src/routes/openingHoursRoutes');
-const interruptionRoutes = require('./src/routes/interruptionRoutes');
+import financialRoutes from './src/routes/financial.js';
+import merchantRoutes from './src/routes/merchantRoutes';
+import qrcodeRoutes from './src/routes/qrcodeRoutes';
+import openingHoursRoutes from './src/routes/openingHoursRoutes';
+import interruptionRoutes from './src/routes/interruptionRoutes';
+
+// Importar serviço de polling de status
+import { IFoodMerchantStatusService } from './src/services/ifoodMerchantStatusService';
 
 // Registrar rotas
 app.use('/api/financial', financialRoutes);
@@ -39,9 +48,9 @@ app.use('/api', openingHoursRoutes);
 app.use('/api', interruptionRoutes);
 
 // Rota de teste de saúde
-app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
+app.get('/health', (req: Request, res: Response) => {
+  res.json({
+    status: 'OK',
     timestamp: new Date().toISOString(),
     supabase: {
       url: supabaseUrl,
@@ -51,7 +60,7 @@ app.get('/health', (req, res) => {
 });
 
 // Rota para testar conexão com Supabase
-app.get('/test-supabase', async (req, res) => {
+app.get('/test-supabase', async (req: Request, res: Response) => {
   try {
     // Tentar uma operação simples
     const { data, error } = await supabase
@@ -64,41 +73,47 @@ app.get('/test-supabase', async (req, res) => {
       return res.status(500).json({ error: error.message });
     }
 
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       message: 'Conexão com Supabase OK!',
       data: data
     });
-  } catch (err) {
+  } catch (err: any) {
     console.error('Erro interno:', err);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
 
 // Rota para listar tabelas
-app.get('/tables', async (req, res) => {
+app.get('/tables', async (req: Request, res: Response) => {
   try {
     const { data, error } = await supabase.rpc('get_table_names');
-    
+
     if (error) {
       // Fallback para method direto se RPC não funcionar
       const response = await supabase
         .from('information_schema.tables')
         .select('table_name')
         .eq('table_schema', 'public');
-      
-      return res.json({ 
+
+      return res.json({
         tables: response.data || [],
-        error: response.error 
+        error: response.error
       });
     }
 
     res.json({ tables: data });
-  } catch (err) {
+  } catch (err: any) {
     console.error('Erro ao listar tabelas:', err);
     res.status(500).json({ error: err.message });
   }
 });
+
+// Iniciar polling de status de merchants (30 segundos)
+// Requisitos de homologação: Polling de /merchants/{merchantId}/status a cada 30 segundos
+console.log('🔄 Iniciando polling de status de merchants...');
+IFoodMerchantStatusService.startScheduler(0.5); // 0.5 minutos = 30 segundos
+console.log('✅ Polling configurado para rodar a cada 30 segundos');
 
 // Iniciar servidor
 app.listen(port, () => {
@@ -150,4 +165,4 @@ Endpoints de Interrupções:
 `);
 });
 
-module.exports = app;
+export default app;

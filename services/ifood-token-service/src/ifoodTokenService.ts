@@ -606,3 +606,28 @@ export async function getTokenForUser(userId: string): Promise<StoredToken | nul
     return null;
   }
 }
+
+/**
+ * Helper function to get any available token from database
+ * Returns the most recently updated token
+ */
+export async function getAnyAvailableToken(): Promise<StoredToken | null> {
+  try {
+    const { data, error } = await supabase
+      .from('ifood_tokens')
+      .select('*')
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error fetching any available token:', error);
+      return null;
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Error in getAnyAvailableToken:', error);
+    return null;
+  }
+}

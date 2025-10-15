@@ -31,6 +31,7 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, Search, Filter, Calendar } from 'lucide-react';
 import { useFinancialEvents, useDateRangeFilter } from '@/hooks/financial/useFinancialData';
 import { formatCurrency, formatDate } from '@/utils/format';
+import { CardTableSkeleton } from './TableSkeleton';
 
 interface EventsPanelProps {
   merchantId: string;
@@ -67,13 +68,7 @@ export function EventsPanel({ merchantId }: EventsPanelProps) {
   };
 
   if (isLoading) {
-    return (
-      <Card>
-        <CardContent className="flex items-center justify-center h-64">
-          <Loader2 className="h-8 w-8 animate-spin" />
-        </CardContent>
-      </Card>
-    );
+    return <CardTableSkeleton rows={6} columns={6} showActions={true} />;
   }
 
   return (

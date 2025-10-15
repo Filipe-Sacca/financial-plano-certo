@@ -7,7 +7,6 @@ Script principal para executar os diferentes módulos do sistema.
 
 Uso:
     python run.py --help                    # Mostra ajuda
-    python run.py --sync                    # Sincronização de produtos
     python run.py --api-server              # Inicia servidor API
     python run.py --token-check             # Verifica tokens
     python run.py --merchant-status         # Verifica status das lojas
@@ -21,16 +20,6 @@ from pathlib import Path
 
 # Adicionar src ao path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
-
-def run_sync():
-    """Executa sincronização de produtos"""
-    print("🔄 Iniciando sincronização de produtos iFood...")
-    try:
-        from src.main import main
-        main()
-    except ImportError:
-        print("❌ Erro: Não foi possível importar o módulo principal")
-        print("💡 Verifique se os arquivos estão na pasta src/")
 
 def run_api_server():
     """Inicia servidor API"""
@@ -78,7 +67,6 @@ def show_status():
     important_files = [
         "services/ifood-token-service/src/ifoodTokenService.ts",
         "frontend/plano-certo-hub-insights/package.json",
-        "src/main.py",
         "config/requirements.txt"
     ]
     
@@ -95,15 +83,12 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Exemplos de uso:
-  python run.py --sync              # Sincronizar produtos
-  python run.py --api-server        # Iniciar servidor API  
+  python run.py --api-server        # Iniciar servidor API
   python run.py --token-check       # Verificar tokens
   python run.py --status            # Mostrar status geral
         """
     )
-    
-    parser.add_argument("--sync", action="store_true", 
-                       help="Executar sincronização de produtos")
+
     parser.add_argument("--api-server", action="store_true",
                        help="Iniciar servidor API")
     parser.add_argument("--token-check", action="store_true",
@@ -114,10 +99,8 @@ Exemplos de uso:
                        help="Mostrar status geral do sistema")
     
     args = parser.parse_args()
-    
-    if args.sync:
-        run_sync()
-    elif args.api_server:
+
+    if args.api_server:
         run_api_server()
     elif args.token_check:
         run_token_check()
@@ -132,7 +115,6 @@ Exemplos de uso:
         print()
         print("🔧 Comandos principais:")
         print("  python run.py --status           # Status do sistema")
-        print("  python run.py --sync             # Sincronizar dados")
         print("  python run.py --token-check      # Verificar tokens")
         print()
         print("📁 Estrutura do projeto:")

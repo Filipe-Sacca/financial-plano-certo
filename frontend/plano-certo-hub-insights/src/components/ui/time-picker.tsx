@@ -13,10 +13,14 @@ interface TimePickerProps {
 }
 
 export const TimePicker = React.forwardRef<HTMLInputElement, TimePickerProps>(
-  ({ value = "", onChange, disabled = false, label, className }, ref) => {
+  ({ value, onChange, disabled = false, label, className }, ref) => {
+    const [isFocused, setIsFocused] = React.useState(false)
+
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       onChange?.(e.target.value)
     }
+
+    const showTime = value || isFocused
 
     return (
       <div className={cn("flex flex-col gap-2", className)}>
@@ -25,10 +29,15 @@ export const TimePicker = React.forwardRef<HTMLInputElement, TimePickerProps>(
           <Input
             ref={ref}
             type="time"
-            value={value}
+            value={value || ""}
             onChange={handleChange}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
             disabled={disabled}
-            className="pr-10"
+            className={cn(
+              "pr-10",
+              !showTime && "[&::-webkit-datetime-edit]:opacity-0 [&::-webkit-datetime-edit-fields-wrapper]:opacity-0"
+            )}
           />
           <Clock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
         </div>

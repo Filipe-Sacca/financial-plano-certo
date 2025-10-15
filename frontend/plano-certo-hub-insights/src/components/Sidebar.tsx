@@ -9,6 +9,7 @@ import {
   CreditCard,
   RefreshCw,
   Clock,
+  ArrowUpCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -24,6 +25,7 @@ export const Sidebar = ({ activeModule, onModuleChange }: SidebarProps) => {
     { id: 'settlements', label: 'Assentamentos', icon: DollarSign },
     { id: 'events', label: 'Eventos Financeiros', icon: Calendar },
     { id: 'sales', label: 'Vendas', icon: TrendingUp },
+    { id: 'anticipations', label: 'Antecipações', icon: ArrowUpCircle },
     { id: 'reconciliation', label: 'Reconciliação', icon: CheckCircle },
     { id: 'ifood-sync', label: 'Sincronização iFood', icon: RefreshCw },
     { id: 'opening-hours', label: 'Horários de Funcionamento', icon: Clock },
@@ -55,15 +57,15 @@ export const Sidebar = ({ activeModule, onModuleChange }: SidebarProps) => {
               key={item.id}
               variant={activeModule === item.id ? "default" : "ghost"}
               className={cn(
-                "w-full justify-start h-12 text-left",
+                "w-full justify-start items-center h-12 text-left px-4",
                 activeModule === item.id
                   ? "bg-gradient-to-r from-blue-500 to-purple-600 text-white hover:from-blue-600 hover:to-purple-700"
                   : "text-muted-foreground hover:text-foreground hover:bg-accent"
               )}
               onClick={() => onModuleChange(item.id)}
             >
-              <Icon className="mr-3 h-5 w-5" />
-              {item.label}
+              <Icon className="mr-3 h-5 w-5 flex-shrink-0" />
+              <span className="truncate">{item.label}</span>
             </Button>
           );
         })}

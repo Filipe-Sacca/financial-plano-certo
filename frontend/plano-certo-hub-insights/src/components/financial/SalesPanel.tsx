@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/button';
 import { InfoIcon, Loader2, RefreshCw, ShoppingCart } from 'lucide-react';
 import { useSales } from '@/hooks/financial/useFinancialData';
 import { formatCurrency, formatDate, formatTime } from '@/utils/format';
+import { DashboardCardSkeleton, CardTableSkeleton } from './TableSkeleton';
 
 interface SalesPanelProps {
   merchantId: string;
@@ -69,11 +70,21 @@ export function SalesPanel({ merchantId }: SalesPanelProps) {
 
   if (isLoading) {
     return (
-      <Card>
-        <CardContent className="flex items-center justify-center h-64">
-          <Loader2 className="h-8 w-8 animate-spin" />
-        </CardContent>
-      </Card>
+      <div className="space-y-4">
+        <Alert>
+          <InfoIcon className="h-4 w-4" />
+          <AlertTitle>Limitação da API</AlertTitle>
+          <AlertDescription>
+            A API do iFood retorna apenas vendas dos últimos 7 dias.
+          </AlertDescription>
+        </Alert>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <DashboardCardSkeleton />
+          <DashboardCardSkeleton />
+          <DashboardCardSkeleton />
+        </div>
+        <CardTableSkeleton rows={5} columns={5} showActions={true} />
+      </div>
     );
   }
 

@@ -11,7 +11,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { TimePicker } from '@/components/ui/time-picker';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from '@/components/ui/use-toast';
@@ -154,12 +153,6 @@ export default function OpeningHoursManager() {
   const [startTime, setStartTime] = useState('08:00');
   const [endTime, setEndTime] = useState('18:00');
 
-  // Time picker modal states
-  const [showStartTimePicker, setShowStartTimePicker] = useState(false);
-  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
-  const [showPauseStartTimePicker, setShowPauseStartTimePicker] = useState(false);
-  const [showPauseEndTimePicker, setShowPauseEndTimePicker] = useState(false);
-
   // Pause form state
   const [pauseStartDate, setPauseStartDate] = useState<Date | undefined>(undefined);
   const [pauseStartTime, setPauseStartTime] = useState('');
@@ -226,7 +219,7 @@ export default function OpeningHoursManager() {
       setLoadingPauses(true);
       console.log('🌐 FRONTEND DEBUG - Making request to backend...');
       const response = await fetch(
-        `http://5.161.109.157:3002/merchants/${selectedMerchant.merchant_id}/interruptions`
+        `http://5.161.109.157:3000/api/merchants/${selectedMerchant.merchant_id}/interruptions`
       );
       console.log('🌐 FRONTEND DEBUG - Response received:', response.status);
       
@@ -287,7 +280,7 @@ export default function OpeningHoursManager() {
       console.log('🔄 [SYNC] Sincronizando pausas do iFood API...');
 
       const response = await fetch(
-        `http://5.161.109.157:3002/merchants/${selectedMerchant.merchant_id}/interruptions/sync`,
+        `http://5.161.109.157:3000/api/merchants/${selectedMerchant.merchant_id}/interruptions/sync`,
         {
           method: 'POST',
           headers: {
@@ -362,7 +355,7 @@ export default function OpeningHoursManager() {
       setCancelingPause(pauseId);
       
       const response = await fetch(
-        `http://5.161.109.157:3002/merchants/${selectedMerchant.merchant_id}/interruptions/${pauseId}`,
+        `http://5.161.109.157:3000/api/merchants/${selectedMerchant.merchant_id}/interruptions/${pauseId}`,
         {
           method: 'DELETE',
           headers: {
@@ -504,27 +497,29 @@ export default function OpeningHoursManager() {
   useEffect(() => {
     fetchMerchants();
     calculateRealPeakHours();
-    
-    // Polling silencioso para atualizações suaves
-    const pollingInterval = setInterval(() => {
-      fetchMerchants(true); // Silent update - não mostra loading
-      calculateRealPeakHours();
-    }, 30000); // A cada 30 segundos (menos frequente)
 
-    return () => clearInterval(pollingInterval);
+    // DESABILITADO - Polling removido para homologação
+    // Requisitos: Remover requisições repetidas de /merchants
+    // const pollingInterval = setInterval(() => {
+    //   fetchMerchants(true); // Silent update - não mostra loading
+    //   calculateRealPeakHours();
+    // }, 30000); // A cada 30 segundos (menos frequente)
+
+    // return () => clearInterval(pollingInterval);
   }, [user?.id]);
 
   useEffect(() => {
     fetchScheduledPauses();
 
-    // Polling para sincronizar pausas programadas do iFood
-    const pausesSyncInterval = setInterval(() => {
-      if (selectedMerchant?.merchant_id) {
-        syncScheduledPausesFromiFood();
-      }
-    }, 60000); // A cada 60 segundos (1 minuto)
+    // DESABILITADO - Polling removido para homologação
+    // Requisitos: Remover requisições repetidas de interruptions/sync
+    // const pausesSyncInterval = setInterval(() => {
+    //   if (selectedMerchant?.merchant_id) {
+    //     syncScheduledPausesFromiFood();
+    //   }
+    // }, 60000); // A cada 60 segundos (1 minuto)
 
-    return () => clearInterval(pausesSyncInterval);
+    // return () => clearInterval(pausesSyncInterval);
   }, [selectedMerchant?.merchant_id]);
 
   // Calculate total weekly hours
@@ -616,7 +611,7 @@ export default function OpeningHoursManager() {
         return;
       }
 
-      const response = await fetch(`http://5.161.109.157:3002/merchants/${selectedMerchant.merchant_id}/interruptions`, {
+      const response = await fetch(`http://5.161.109.157:3000/api/merchants/${selectedMerchant.merchant_id}/interruptions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -687,7 +682,7 @@ export default function OpeningHoursManager() {
     try {
       setDeletingDay(dayToDelete);
 
-      const response = await fetch(`http://5.161.109.157:3002/merchants/${selectedMerchant.merchant_id}/opening-hours/delete`, {
+      const response = await fetch(`http://5.161.109.157:3000/api/merchants/${selectedMerchant.merchant_id}/opening-hours/delete`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
@@ -746,7 +741,7 @@ export default function OpeningHoursManager() {
     try {
       setUpdating(true);
 
-      const response = await fetch(`http://5.161.109.157:3002/merchants/${selectedMerchant.merchant_id}/opening-hours`, {
+      const response = await fetch(`http://5.161.109.157:3000/api/merchants/${selectedMerchant.merchant_id}/opening-hours`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -1324,23 +1319,19 @@ export default function OpeningHoursManager() {
                   <label htmlFor="custom-time" className="text-sm">
                     Abrir a loja das
                   </label>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setShowStartTimePicker(true)}
+                  <Input
+                    type="time"
+                    value={startTime}
+                    onChange={(e) => setStartTime(e.target.value)}
                     className="w-24 h-8 text-sm"
-                  >
-                    {startTime}
-                  </Button>
+                  />
                   <span className="text-sm">até</span>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setShowEndTimePicker(true)}
+                  <Input
+                    type="time"
+                    value={endTime}
+                    onChange={(e) => setEndTime(e.target.value)}
                     className="w-24 h-8 text-sm"
-                  >
-                    {endTime}
-                  </Button>
+                  />
                   
                   {/* Simple trash icon for existing shifts */}
                   {selectedDay && currentShifts.find(s => s.dayOfWeek === selectedDay) && (
@@ -1444,15 +1435,13 @@ export default function OpeningHoursManager() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="pauseStartTime">Hora</Label>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setShowPauseStartTimePicker(true)}
-                    className="w-full h-10 justify-start text-sm"
-                  >
-                    <Clock className="h-4 w-4 mr-2" />
-                    {pauseStartTime || 'Selecionar hora'}
-                  </Button>
+                  <Input
+                    id="pauseStartTime"
+                    type="time"
+                    value={pauseStartTime}
+                    onChange={(e) => setPauseStartTime(e.target.value)}
+                    className="w-full h-10"
+                  />
                 </div>
               </div>
             </div>
@@ -1490,15 +1479,13 @@ export default function OpeningHoursManager() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="pauseEndTime">Hora</Label>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setShowPauseEndTimePicker(true)}
-                    className="w-full h-10 justify-start text-sm"
-                  >
-                    <Clock className="h-4 w-4 mr-2" />
-                    {pauseEndTime || 'Selecionar hora'}
-                  </Button>
+                  <Input
+                    id="pauseEndTime"
+                    type="time"
+                    value={pauseEndTime}
+                    onChange={(e) => setPauseEndTime(e.target.value)}
+                    className="w-full h-10"
+                  />
                 </div>
               </div>
             </div>
@@ -1606,39 +1593,6 @@ export default function OpeningHoursManager() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Time Picker Modals */}
-      <TimePicker
-        isOpen={showStartTimePicker}
-        onClose={() => setShowStartTimePicker(false)}
-        onTimeSelect={setStartTime}
-        title="Selecionar Horário de Abertura"
-        initialTime={startTime}
-      />
-
-      <TimePicker
-        isOpen={showEndTimePicker}
-        onClose={() => setShowEndTimePicker(false)}
-        onTimeSelect={setEndTime}
-        title="Selecionar Horário de Fechamento"
-        initialTime={endTime}
-      />
-
-      <TimePicker
-        isOpen={showPauseStartTimePicker}
-        onClose={() => setShowPauseStartTimePicker(false)}
-        onTimeSelect={setPauseStartTime}
-        title="Início da Pausa"
-        initialTime={pauseStartTime}
-      />
-
-      <TimePicker
-        isOpen={showPauseEndTimePicker}
-        onClose={() => setShowPauseEndTimePicker(false)}
-        onTimeSelect={setPauseEndTime}
-        title="Final da Pausa"
-        initialTime={pauseEndTime}
-      />
     </div>
   );
 }

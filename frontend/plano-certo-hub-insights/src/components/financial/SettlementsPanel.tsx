@@ -23,6 +23,7 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, Download, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useSettlements } from '@/hooks/financial/useFinancialData';
 import { formatCurrency, formatDate } from '@/utils/format';
+import { CardTableSkeleton } from './TableSkeleton';
 
 interface SettlementsPanelProps {
   merchantId: string;
@@ -51,18 +52,51 @@ export function SettlementsPanel({ merchantId }: SettlementsPanelProps) {
   };
 
   const handleExport = () => {
-    // Implementar export para CSV
-    console.log('Exportando settlements...');
+    if (!data?.data || data.data.length === 0) {
+      console.warn('Nenhum dado para exportar');
+      return;
+    }
+
+    try {
+      // Preparar dados para CSV
+      const csvHeaders = ['Data', 'Descrição', 'Tipo', 'Status', 'Valor'];
+      const csvRows = data.data.map((settlement) => [
+        formatDate(settlement.settlement_date),
+        settlement.description || '-',
+        settlement.type,
+        settlement.status,
+        settlement.amount.toFixed(2),
+      ]);
+
+      // Montar CSV
+      const csvContent = [
+        csvHeaders.join(','),
+        ...csvRows.map((row) =>
+          row.map((cell) => `"${cell}"`).join(',')
+        ),
+      ].join('\n');
+
+      // Criar blob e fazer download
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+
+      link.setAttribute('href', url);
+      link.setAttribute('download', `settlements_${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Erro ao exportar CSV:', error);
+    }
   };
 
   if (isLoading) {
-    return (
-      <Card>
-        <CardContent className="flex items-center justify-center h-64">
-          <Loader2 className="h-8 w-8 animate-spin" />
-        </CardContent>
-      </Card>
-    );
+    return <CardTableSkeleton rows={5} columns={5} showActions={true} />;
   }
 
   if (error) {

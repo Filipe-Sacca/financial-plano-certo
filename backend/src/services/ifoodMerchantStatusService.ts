@@ -5,11 +5,15 @@
  */
 
 import axios from 'axios';
-import { getSupabaseClient, getTokenForUser } from '../../../services/ifood-token-service/src/ifoodTokenService.js';
+import { getTokenForUser } from '../../../services/ifood-token-service/src/ifoodTokenService.js';
 import * as schedule from 'node-schedule';
+import { createClient } from '@supabase/supabase-js';
 
 // Get supabase client instance
-const supabase = getSupabaseClient();
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KEY!
+);
 
 interface OpeningHours {
   id?: string;
@@ -1159,31 +1163,26 @@ export class IFoodMerchantStatusService {
                 return;
               }
 
-              // Fetch opening hours
-              console.log(`🔍 Fetching opening hours for merchant: ${merchantId}`);
-              const { success, hours } = await this.fetchOpeningHours(
-                merchantId,
-                tokenData.access_token
-              );
+              // DESABILITADO - Requisitos de homologação
+              // Remover requisições repetidas de /merchants/{merchantId}/opening-hours
+              // Agora apenas verificamos o status do merchant, não buscamos opening hours
 
-              console.log(`📊 Opening hours result - Success: ${success}, Hours count: ${hours.length}`);
-              if (hours.length > 0) {
-                console.log(`📋 First hour sample:`, JSON.stringify(hours[0], null, 2));
-              }
+              // Buscar opening hours do banco de dados local (não do iFood API)
+              const { data: merchantData, error: merchantError } = await supabase
+                .from('ifood_merchants')
+                .select('operating_hours')
+                .eq('merchant_id', merchantId)
+                .single();
 
-              if (!success || hours.length === 0) {
-                console.warn(`❌ Could not fetch opening hours for ${merchantId} - Success: ${success}, Hours: ${hours.length}`);
+              if (merchantError || !merchantData?.operating_hours?.shifts || merchantData.operating_hours.shifts.length === 0) {
+                console.warn(`❌ No opening hours found in database for ${merchantId}`);
                 return;
               }
 
-              // Save opening hours to database
-              console.log(`💾 [SAVE] Salvando ${hours.length} horários para merchant: ${merchantId}`);
-              console.log(`💾 [SAVE] Dados a salvar:`, JSON.stringify(hours, null, 2));
-              
-              const saveResult = await this.saveOpeningHoursToDatabase(merchantId, hours);
-              console.log(`💾 [SAVE] Resultado do salvamento:`, saveResult);
+              const hours = merchantData.operating_hours.shifts;
+              console.log(`📊 Opening hours from database - Hours count: ${hours.length}`);
 
-              // Calculate if within business hours
+              // Calculate if within business hours (usando dados do banco)
               const status = this.calculateIfOpen(hours);
               status.merchantId = merchantId;
 
